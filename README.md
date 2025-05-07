@@ -6,7 +6,7 @@
 
 **LeakLens** is a robust tool designed for users to securely ascertain if their credentials (username/password combinations) have been compromised in publicly known data breaches. This is achieved through interaction with a Google API endpoint, originally utilized by Chrome's password checkup feature, which has been reverse-engineered for this project. The paramount design principle is **user privacy**: plaintext passwords are never transmitted to the LeakLens server (in self-hosted scenarios) or to Google. All verification processes employ advanced cryptographic methodologies, primarily **Elliptic Curve Commutative Encryption**.
 
-**[Link to Live Demo](https://leaklens.onrender.com)**
+**[Link to Live Demo](https://leaklens.0x.lv)**
 
 ---
 
