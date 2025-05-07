@@ -1,4 +1,3 @@
-
 use axum::{
     extract::{Multipart, Path, State},
     Json,
@@ -6,8 +5,7 @@ use axum::{
 use std::io::{BufReader, Cursor, BufRead};
 use tokio::spawn;
 use uuid::Uuid;
-use std::time::{Duration, Instant};
-use tokio::time::sleep;
+use std::time::Instant;
 
 use crate::api::AppState;
 use crate::models::{
@@ -326,8 +324,26 @@ async fn process_batch_job(
     spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
         let mut jobs = job_storage_clone.write().await;
-        if let Some(job) = jobs.remove(&job_id) {
+        if let Some(_job) = jobs.remove(&job_id) {
             tracing::info!("Cleaned up job {} after 1 hour", job_id);
         }
     });
+}
+
+pub async fn delete_batch_job(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<BatchCheckResponse>, ApiError> {
+    let mut jobs = state.job_storage.write().await;
+    
+    if let Some(_job) = jobs.remove(&job_id) {
+        tracing::info!("Job {} manually deleted", job_id);
+        
+        Ok(Json(BatchCheckResponse {
+            job_id,
+            message: "Job successfully deleted".to_string(),
+        }))
+    } else {
+        Err(ApiError::NotFound(format!("Job ID {} not found", job_id)))
+    }
 }

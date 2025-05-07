@@ -12,7 +12,6 @@ use crate::utils::config;
 struct RateLimitSettings {
     single_credential_limit: NonZeroU32,
     batch_credentials_limit: NonZeroU32,
-    max_batch_size: usize,
 }
 
 impl RateLimitSettings {
@@ -22,7 +21,6 @@ impl RateLimitSettings {
         RateLimitSettings {
             single_credential_limit: NonZeroU32::new(cfg.rate_limits.single_credential_rpm).unwrap_or(NonZeroU32::new(60).unwrap()),
             batch_credentials_limit: NonZeroU32::new(cfg.rate_limits.batch_credential_rpm).unwrap_or(NonZeroU32::new(10).unwrap()),
-            max_batch_size: cfg.rate_limits.max_batch_size,
         }
     }
 }
@@ -36,7 +34,6 @@ fn settings() -> &'static RateLimitSettings {
 pub struct RateLimiter {
     single_credential_limiter: GovernorRateLimiter<NotKeyed, InMemoryState, DefaultClock>,
     batch_credentials_limiter: GovernorRateLimiter<NotKeyed, InMemoryState, DefaultClock>,
-    max_batch_size: usize,
 }
 
 impl RateLimiter {
@@ -58,7 +55,6 @@ impl RateLimiter {
         RateLimiter {
             single_credential_limiter,
             batch_credentials_limiter,
-            max_batch_size: settings.max_batch_size,
         }
     }
 
@@ -68,10 +64,6 @@ impl RateLimiter {
 
     pub async fn check_batch_credentials_limit(&self) -> bool {
         self.batch_credentials_limiter.check().is_ok()
-    }
-    
-    pub fn get_max_batch_size(&self) -> usize {
-        self.max_batch_size
     }
 }
 

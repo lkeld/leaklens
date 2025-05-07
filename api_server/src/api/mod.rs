@@ -6,7 +6,7 @@ pub mod status_routes;
 pub mod health;
 
 use axum::{
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use tower_http::{
@@ -59,6 +59,7 @@ pub fn create_router(job_storage: JobStorage) -> Router {
         .route("/api/v1/check/single", post(check_routes::check_single))
         .route("/api/v1/check/batch", post(check_routes::check_batch))
         .route("/api/v1/check/batch/:job_id/status", get(check_routes::get_batch_status))
+        .route("/api/v1/check/batch/:job_id", delete(check_routes::delete_batch_job))
         .merge(docs::docs_routes())
         .with_state(app_state)
         .layer(cors)
