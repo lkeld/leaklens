@@ -245,7 +245,7 @@ The LeakLens backend provides a RESTful API for credential leak checking.
     *   **Description:** A health check endpoint for the API.
     *   **Response (JSON):** `{"status": "healthy", "timestamp": "...", "google_api_status": "..."}`
 
-For comprehensive API documentation, including detailed request/response schemas, error codes, and usage examples, please refer to the **[API Documentation Page on the hosted webapp](#)** or a dedicated `API_DOCS.md` file within this repository (if created).
+For comprehensive API documentation, including detailed request/response schemas, error codes, and usage examples, please refer to the **[API Documentation Page on the hosted webapp]([#](https://leaklens.onrender/api/docs))**
 
 ---
 
