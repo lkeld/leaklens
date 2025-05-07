@@ -2,7 +2,7 @@
 # Multi-stage build for both API and WebApp with Nginx reverse proxy
 
 # Build API stage
-FROM rust:1.80-slim-bullseye AS api-builder
+FROM rust:1.81-slim-bullseye AS api-builder
 
 # Install dependencies with fix for debconf issues
 ENV DEBIAN_FRONTEND=noninteractive
