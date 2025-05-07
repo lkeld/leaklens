@@ -9,6 +9,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    make \
+    gcc \
+    perl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
