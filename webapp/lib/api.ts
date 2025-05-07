@@ -3,8 +3,42 @@
  */
 import { z } from 'zod';
 
+// Format API URL - ensures it has a protocol
+function formatApiUrl(url: string): string {
+  // If it's a path that starts with /, it's on the same server
+  if (url.startsWith('/')) {
+    return url;
+  }
+  
+  // If URL already has a protocol, return as is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // If we're in production, use HTTPS
+  if (process.env.NODE_ENV === 'production') {
+    return `https://${url}`;
+  }
+  
+  // Otherwise, use HTTP for local development
+  return `http://${url}`;
+}
+
 // API base URL - This can be overridden by environment variables in production
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+export const API_URL = formatApiUrl(process.env.NEXT_PUBLIC_API_URL || 'localhost:3000');
+
+// Helper function to construct the proper API endpoint
+function getApiEndpoint(endpoint: string): string {
+  // If API_URL is a path (starts with /), it's already a path prefix
+  if (API_URL.startsWith('/')) {
+    // Avoid double slashes in the path
+    const path = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+    return `${API_URL}/${path}`;
+  }
+  
+  // If it's a full URL, use it as is
+  return `${API_URL}${endpoint}`;
+}
 
 // Type definitions
 export interface SingleCheckRequest {
@@ -66,7 +100,7 @@ export async function checkSingleCredential(
   password: string
 ): Promise<SingleCheckResponse | ErrorResponse> {
   try {
-    const response = await fetch(`${API_URL}/api/v1/check/single`, {
+    const response = await fetch(getApiEndpoint('/api/v1/check/single'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -114,7 +148,7 @@ export async function uploadBatchCredentials(
     formData.append('inputType', 'email_pass');  // Always use email_pass
     formData.append('maxEntries', '10000');  // Support up to 10,000 entries per batch
 
-    const response = await fetch(`${API_URL}/api/v1/check/batch`, {
+    const response = await fetch(getApiEndpoint('/api/v1/check/batch'), {
       method: 'POST',
       body: formData,
     });
@@ -144,7 +178,7 @@ export async function getBatchJobStatus(
   jobId: string
 ): Promise<BatchCheckResultsResponse | ErrorResponse> {
   try {
-    const response = await fetch(`${API_URL}/api/v1/check/batch/${jobId}/status`);
+    const response = await fetch(getApiEndpoint(`/api/v1/check/batch/${jobId}/status`));
     
     const data = await response.json();
     
@@ -168,7 +202,7 @@ export async function getBatchJobStatus(
  */
 export async function getApiStatus(): Promise<ApiStatusResponse | ErrorResponse> {
   try {
-    const response = await fetch(`${API_URL}/api/v1/status`);
+    const response = await fetch(getApiEndpoint('/api/v1/status'));
     
     const data = await response.json();
     

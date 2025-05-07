@@ -1,13 +1,12 @@
 services:
-  # Backend API Service (Rust)
+  # Combined service with API and WebApp
   - type: web
-    name: leaklens-api
+    name: leaklens
     env: docker
-    rootDir: api_server
     dockerfilePath: ./Dockerfile
     region: singapore
     plan: free
-    healthCheckPath: /health
+    healthCheckPath: /api/health
     envVars:
       - key: SERVER_HOST
         value: 0.0.0.0
@@ -16,23 +15,9 @@ services:
       - key: RUST_LOG
         value: info
       - key: CORS_ALLOWED_ORIGINS
-        value: "*"  # Use wildcard for development; in production it will be replaced
-    autoDeploy: true
-  
-  # Frontend Web App (Next.js)
-  - type: web
-    name: leaklens-webapp
-    env: docker
-    rootDir: webapp
-    dockerfilePath: ./Dockerfile
-    region: ohio
-    plan: free
-    envVars:
+        value: "*"
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: leaklens-api
-          type: web
-          property: url
+        value: "/api"
     autoDeploy: true
