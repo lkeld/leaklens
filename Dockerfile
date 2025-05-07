@@ -75,11 +75,17 @@ FROM debian:bullseye-slim
 # Set environment variable to avoid debconf errors
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies and Nginx
+# Install runtime dependencies, Nginx, Node.js and npm
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl1.1 \
     nginx \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Create needed directories
@@ -87,16 +93,32 @@ RUN mkdir -p /app/api /app/webapp /app/scripts
 
 # Create startup script directly in the final image
 RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "Starting LeakLens application..."\n\
+\n\
 # Start the API server in the background\n\
+echo "Starting API server..."\n\
 cd /app/api\n\
 ./api_server &\n\
+API_PID=$!\n\
 \n\
 # Start the Next.js app in the background\n\
+echo "Starting Next.js webapp..."\n\
 cd /app/webapp\n\
 npm start &\n\
+NEXT_PID=$!\n\
 \n\
+echo "Starting Nginx..."\n\
 # Start Nginx in the foreground\n\
-nginx -g "daemon off;"\n' > /app/scripts/start.sh
+nginx -g "daemon off;" &\n\
+NGINX_PID=$!\n\
+\n\
+# Wait for any process to exit\n\
+wait -n\n\
+\n\
+# Exit with status of process that exited first\n\
+exit $?\n' > /app/scripts/start.sh
 
 # Make the script executable
 RUN chmod +x /app/scripts/start.sh
