@@ -341,15 +341,18 @@ Let $`k_S`$ be the private key of the LeakLens server and $`k_G`$ be Google's pr
     *   Re-encrypts with its key: $`E_{GS} = k_G \cdot E_S = k_G \cdot (k_S \cdot P)`$. This is returned as `reencrypted_lookup_hash`.
     *   Google also maintains a database of known leaked credential points, say $`L_j`$. It returns prefixes of $`\text{SHA256}(\text{serialize}(k_G \cdot L_j))`$ as `encrypted_leak_match_prefix`.
 4.  **LeakLens Server Final Processing:**
-    *   Receives $`E_{GS}`$ and the list of `encrypted_leak_match_prefix`.
-    *   "Removes" its encryption layer from $`E_{GS}`$ using its decryption key $`k_S^{-1}`$:
-        $$
-        P_G = k_S^{-1} \cdot E_{GS} = k_S^{-1} \cdot (k_G \cdot k_S \cdot P)
-        $$
-        Due to the associativity and commutativity of scalars in scalar multiplication:
-        $$
-        P_G = (k_S^{-1} \cdot k_S) \cdot k_G \cdot P = 1 \cdot k_G \cdot P = k_G \cdot P
-        $$
+    *   Receives `E_{GS}` and the list of `encrypted_leak_match_prefix`.
+    *   Removes its encryption layer from `E_{GS}` using its decryption key `k_S^{-1}`:
+
+        ```text
+        P_G = k_S^{-1} · E_{GS} = k_S^{-1} · (k_G · k_S · P)
+        ```
+
+        Due to associativity and commutativity of scalar multiplication:
+
+        ```text
+        P_G = (k_S^{-1} · k_S) · k_G · P = 1 · k_G · P = k_G · P
+        ```
     *   The server now possesses $`P_G`$, which is the original point $`P`$ as if it had been encrypted *only* by Google's key $`k_G`$.
     *   The server serializes $`P_G`$. As the exact y-coordinate parity used by Google for its internal $`L_j`$ representations might not be known, or the prefixes might cover both, the server typically checks both possible serializations (corresponding to `0x02` and `0x03` prefixes). For each serialization, it computes $`\text{SHA256}(\text{serialize}(P_G))`$.
     *   The prefixes of these computed SHA256 hashes are then compared against the `encrypted_leak_match_prefix` values received from Google. A match indicates a leak.
