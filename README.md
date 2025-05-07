@@ -1,12 +1,12 @@
 # LeakLens: Secure Credential Leak Checker
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/lkeld/leaklens)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/leaklens)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/lkeld/leaklens)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/yourusername/leaklens)
 
 **LeakLens** is a robust tool designed for users to securely ascertain if their credentials (username/password combinations) have been compromised in publicly known data breaches. This is achieved through interaction with a Google API endpoint, originally utilized by Chrome's password checkup feature, which has been reverse-engineered for this project. The paramount design principle is **user privacy**: plaintext passwords are never transmitted to the LeakLens server (in self-hosted scenarios) or to Google. All verification processes employ advanced cryptographic methodologies, primarily **Elliptic Curve Commutative Encryption**.
 
-**[Link to Live Demo](https://leaklens.onrender.com)**
+**[Link to Live Demo (if deployed)]**
 
 ---
 
@@ -160,7 +160,7 @@ To deploy and run LeakLens locally or on a private server, follow these instruct
 
 ```bash
 # Clone the repository
-git clone https://github.com/lkeld/leaklens.git
+git clone https://github.com/yourusername/leaklens.git
 cd leaklens/api_server
 
 # 1.1. Environment Configuration (CRITICAL)
