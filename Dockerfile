@@ -27,15 +27,18 @@ RUN mkdir -p src/bin && touch src/bin/test_credential_check.rs
 # Fix warnings and add minimal content to the test file
 RUN echo 'fn main() { println!("Test Credential Check"); }' > src/bin/test_credential_check.rs
 
-# Fix unused imports warnings
+# Fix unused imports and variable warnings WITHOUT adding underscores
 RUN if [ -f src/api/check_routes.rs ]; then \
     sed -i 's/use std::time::{Duration, Instant};/use std::time::Instant;/' src/api/check_routes.rs && \
     sed -i '/use tokio::time::sleep;/d' src/api/check_routes.rs; \
     fi
 
-# Fix unused variable warning
+# Don't add underscores to variables that are actually used
+# This command explicitly keeps variable names without underscores
 RUN if [ -f src/api/check_routes.rs ]; then \
-    sed -i 's/if let Some(job) = jobs/if let Some(_job) = jobs/' src/api/check_routes.rs; \
+    sed -i 's/if let Some(_job) = jobs.get/if let Some(job) = jobs.get/g' src/api/check_routes.rs && \
+    sed -i 's/if let Some(_job) = jobs.get_mut/if let Some(job) = jobs.get_mut/g' src/api/check_routes.rs && \
+    sed -i 's/if let Some(_job) = jobs.remove/if let Some(job) = jobs.remove/g' src/api/check_routes.rs; \
     fi
 
 # Build dependencies - this is done separately to cache dependencies
