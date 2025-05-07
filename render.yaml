@@ -16,10 +16,7 @@ services:
       - key: RUST_LOG
         value: info
       - key: CORS_ALLOWED_ORIGINS
-        fromService:
-          name: leaklens-webapp
-          type: web
-          property: host
+        value: "*"  # Use wildcard for development; in production it will be replaced
     autoDeploy: true
   
   # Frontend Web App (Next.js)
@@ -37,5 +34,5 @@ services:
         fromService:
           name: leaklens-api
           type: web
-          property: host
+          property: url
     autoDeploy: true

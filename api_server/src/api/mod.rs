@@ -13,6 +13,8 @@ use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
+use http::HeaderValue;
+use tracing;
 
 use crate::services::leak_check_service::LeakCheckService;
 use crate::services::token_manager::TokenManager;
@@ -23,11 +25,31 @@ pub fn create_router(job_storage: JobStorage) -> Router {
     let token_manager = TokenManager::new();
     let leak_check_service = LeakCheckService::new(token_manager.clone());
 
-
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let config = config::get();
+    
+    // Create CORS configuration based on environment settings
+    let cors = if config.server.cors_allowed_origins.contains(&"*".to_string()) {
+        // If the wildcard "*" is in the allowed origins, allow any origin
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        // Otherwise, configure specific allowed origins
+        let mut cors_layer = CorsLayer::new();
+        
+        // Add each origin from the configuration
+        for origin in &config.server.cors_allowed_origins {
+            cors_layer = cors_layer.allow_origin(origin.parse::<HeaderValue>().unwrap_or_else(|_| {
+                tracing::warn!("Invalid CORS origin: {}", origin);
+                "http://localhost:3000".parse().unwrap()
+            }));
+        }
+        
+        cors_layer
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     let app_state = AppState {
         leak_check_service,
