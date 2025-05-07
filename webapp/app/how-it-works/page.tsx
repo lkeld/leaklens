@@ -300,27 +300,18 @@ Gy = 361342509566343849223497752668657717304751322824343527903347024683244357745
         <section className="mt-12">
           <div className="overflow-hidden rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30 p-8 text-center">
             <div className="space-y-4">
-              <div className="mx-auto h-16 w-16 rounded-full bg-gray-800 p-4">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  className="h-full w-full text-purple-500"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+              <div className="mx-auto max-w-2xl">
+                <img 
+                  src="/diagram.png" 
+                  alt="Data flow and encryption process diagram" 
+                  className="w-full rounded-lg shadow-lg"
+                />
               </div>
               <p className="text-lg font-medium text-gray-300">
-                A visual diagram illustrating the data flow and encryption steps will be added here.
+                A visual diagram illustrating the data flow and encryption steps.
               </p>
               <p className="text-sm text-gray-400">
-                The diagram will show the complete process from user input to result, highlighting the encryption and
+                The diagram shows the complete process from user input to result, highlighting the encryption and
                 decryption steps.
               </p>
             </div>
