@@ -23,16 +23,19 @@ RUN cargo build --release
 RUN cargo clean && cargo build --release
 
 # Build WebApp stage
-FROM node:20-alpine AS webapp-builder
+FROM node:20.10-alpine AS webapp-builder
 
 # Set working directory
 WORKDIR /app
 
+# Display Node.js and npm versions for debugging
+RUN node -v && npm -v
+
 # Copy package files
 COPY webapp/package.json webapp/package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with more verbose output
+RUN npm ci --verbose
 
 # Copy source code
 COPY webapp/ .
