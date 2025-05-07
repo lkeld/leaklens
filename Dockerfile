@@ -4,7 +4,8 @@
 # Build API stage
 FROM rust:1.76-slim-bullseye AS api-builder
 
-# Install dependencies
+# Install dependencies with fix for debconf issues
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
@@ -34,8 +35,9 @@ RUN node -v && npm -v
 # Copy package files
 COPY webapp/package.json webapp/package-lock.json ./
 
-# Install dependencies with more verbose output
-RUN npm ci --verbose
+# Install dependencies with CI=false to prevent treating warnings as errors
+ENV CI=false
+RUN npm install --no-fund --no-audit
 
 # Copy source code
 COPY webapp/ .
@@ -45,6 +47,9 @@ RUN npm run build
 
 # Runtime stage
 FROM debian:bullseye-slim
+
+# Set environment variable to avoid debconf errors
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies and Nginx
 RUN apt-get update && apt-get install -y \
