@@ -12,7 +12,7 @@ services:
       - key: SERVER_HOST
         value: 0.0.0.0
       - key: SERVER_PORT
-        value: 10000
+        value: 3000
       - key: RUST_LOG
         value: info
       - key: CORS_ALLOWED_ORIGINS
@@ -25,10 +25,9 @@ services:
   # Frontend Web App (Next.js)
   - type: web
     name: leaklens-webapp
-    env: node
+    env: docker
     rootDir: webapp
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
     region: ohio
     plan: starter
     envVars:
