@@ -27,6 +27,56 @@
 
 ---
 
+## Docker Deployment (Recommended)
+
+The easiest way to run LeakLens is using Docker. This method packages everything into a single container that includes both the web application and API server.
+
+### Prerequisites
+
+- Docker and Docker Compose installed on your server
+- Basic knowledge of Docker commands
+- Port 8080 available on your server (or change the port mapping in docker-compose.yml)
+
+### Steps to Deploy
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/lkeld/leaklens.git
+   cd leaklens
+   ```
+
+2. Build and start the Docker container:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. Access LeakLens in your browser:
+   ```
+   http://your-server-ip:8080
+   ```
+
+4. To stop the container:
+   ```bash
+   docker-compose down
+   ```
+
+5. To view logs:
+   ```bash
+   docker-compose logs -f
+   ```
+
+### Configuration
+
+You can modify the environment variables in the `docker-compose.yml` file to customize the deployment:
+
+- Change the exposed port by modifying `8080:80` in the ports section
+- Add custom environment variables as needed
+- Mount additional volumes if required
+
+The application data will be stored in a Docker volume named `leaklens_data`.
+
+---
+
 ## Features
 
 *   **Privacy-Preserving Checks:** Leverages Elliptic Curve Commutative Encryption, ensuring plaintext passwords are never exposed to Google or the LeakLens server during verification.
