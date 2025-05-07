@@ -29,7 +29,7 @@ services:
     rootDir: webapp
     dockerfilePath: ./Dockerfile
     region: ohio
-    plan: starter
+    plan: free
     envVars:
       - key: NODE_ENV
         value: production
