@@ -5,8 +5,8 @@ services:
     env: docker
     rootDir: api_server
     dockerfilePath: ./Dockerfile
-    region: ohio
-    plan: starter
+    region: singapore
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: SERVER_HOST
@@ -19,7 +19,7 @@ services:
         fromService:
           name: leaklens-webapp
           type: web
-          property: url
+          property: host
     autoDeploy: true
   
   # Frontend Web App (Next.js)
@@ -37,5 +37,5 @@ services:
         fromService:
           name: leaklens-api
           type: web
-          property: url
-    autoDeploy: true 
+          property: host
+    autoDeploy: true
