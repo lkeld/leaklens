@@ -90,6 +90,53 @@ EXPOSE 3000
 CMD ["./api_server"]
 EOL
 
+# Create a modified Dockerfile for the webapp
+cat > .docker-build/webapp-alt.Dockerfile << 'EOL'
+# LeakLens WebApp Dockerfile
+# Multi-stage build for optimized production image
+
+# Build stage
+FROM node:20-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install dependencies with legacy-peer-deps to resolve dependency conflicts
+ENV CI=false
+RUN npm install --no-fund --no-audit --legacy-peer-deps
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Runtime stage
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV NODE_ENV production
+ENV PORT 3001
+
+# Copy built assets from builder stage
+COPY --from=builder /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+# Expose the port
+EXPOSE 3001
+
+# Start the application
+CMD ["npm", "start"]
+EOL
+
 # Create docker-compose.yml file
 cat > docker-compose.yml << 'EOL'
 version: '3.8'
@@ -122,7 +169,7 @@ services:
   webapp:
     build:
       context: ./webapp
-      dockerfile: Dockerfile
+      dockerfile: ../.docker-build/webapp-alt.Dockerfile
     container_name: leaklens-webapp
     depends_on:
       - api
