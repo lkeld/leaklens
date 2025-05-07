@@ -2,12 +2,16 @@
 # Multi-stage build for optimized production image
 
 # Build stage
-FROM rust:1.76-slim-bullseye AS builder
+FROM rust:1.81-slim-bullseye AS builder
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    make \
+    gcc \
+    perl \
+    protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory

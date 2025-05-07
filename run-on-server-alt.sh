@@ -1,11 +1,20 @@
 #!/bin/bash
 
-# LeakLens Server Quick Deploy Script
+# LeakLens Server Quick Deploy Script (Alternative Version)
 set -e
 
 echo "===================================="
-echo "  LeakLens Quick Server Deployment  "
+echo "  LeakLens Alternative Deployment   "
 echo "===================================="
+
+# First, install protobuf-compiler on the host system
+echo "Installing Protocol Buffers compiler..."
+sudo apt-get update
+sudo apt-get install -y protobuf-compiler
+
+# Verify installation
+echo "Verifying Protocol Buffers compiler installation..."
+protoc --version
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
@@ -19,7 +28,37 @@ if ! command -v docker-compose &> /dev/null; then
   exit 1
 fi
 
-# Create docker-compose.yml file in the current directory
+# Create a special build script inside the api_server directory
+echo "Creating build helper script..."
+cat > api_server/build.rs << 'EOL'
+fn main() {
+    // Use system protoc to compile protos
+    if let Ok(protoc_path) = std::env::var("PROTOC") {
+        println!("cargo:warning=Using protoc from path: {}", protoc_path);
+    } else {
+        // Look for protoc in the system path
+        println!("cargo:warning=No PROTOC env var set, using system protoc");
+    }
+
+    // Tell Cargo to rerun this script if the proto file changes
+    println!("cargo:rerun-if-changed=proto/leak_detection_api.proto");
+
+    // Invoke protoc directly to generate the files
+    println!("cargo:warning=Attempting to invoke protoc directly");
+    let status = std::process::Command::new("protoc")
+        .arg("--rust_out=./src/proto")
+        .arg("--proto_path=./proto")
+        .arg("./proto/leak_detection_api.proto")
+        .status();
+
+    match status {
+        Ok(exit) => println!("cargo:warning=protoc exited with: {}", exit),
+        Err(e) => println!("cargo:warning=Failed to run protoc: {}", e),
+    }
+}
+EOL
+
+# Create docker-compose.yml file
 cat > docker-compose.yml << 'EOL'
 version: '3.8'
 
@@ -35,7 +74,10 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=3000
       - RUST_LOG=info
+      - PROTOC=/usr/bin/protoc
       - CORS_ALLOWED_ORIGINS=http://localhost:3001,http://webapp:3001
+    volumes:
+      - /usr/bin/protoc:/usr/bin/protoc:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
       interval: 30s

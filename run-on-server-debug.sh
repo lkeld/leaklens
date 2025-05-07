@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# LeakLens Server Quick Deploy Script
+# LeakLens Server Quick Deploy Script (Debug Version)
 set -e
 
 echo "===================================="
-echo "  LeakLens Quick Server Deployment  "
+echo "  LeakLens Debug Server Deployment  "
 echo "===================================="
 
 # Check if Docker is installed
@@ -19,6 +19,63 @@ if ! command -v docker-compose &> /dev/null; then
   exit 1
 fi
 
+# Create a modified Dockerfile for the API server
+mkdir -p .docker-build
+cat > .docker-build/api.Dockerfile << 'EOL'
+# LeakLens API Server Dockerfile (Debug Version)
+FROM rust:1.81-slim-bullseye AS builder
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    make \
+    gcc \
+    perl \
+    protobuf-compiler \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify protoc is installed
+RUN protoc --version || echo "protoc not found"
+
+# Set up working directory
+WORKDIR /app
+
+# Copy the entire project
+COPY . .
+
+# Set environment variable for Prost build to use system protoc
+ENV PROTOC=/usr/bin/protoc
+
+# Build dependencies - this is done separately to cache dependencies
+RUN cargo build --release
+
+# Build the application
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bullseye-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl1.1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the build artifact from the builder stage
+WORKDIR /app
+COPY --from=builder /app/target/release/api_server .
+COPY --from=builder /app/swagger.yaml ./
+
+# Expose the port
+EXPOSE 3000
+
+# Set the startup command
+CMD ["./api_server"]
+EOL
+
 # Create docker-compose.yml file in the current directory
 cat > docker-compose.yml << 'EOL'
 version: '3.8'
@@ -27,7 +84,7 @@ services:
   api:
     build:
       context: ./api_server
-      dockerfile: Dockerfile
+      dockerfile: ../.docker-build/api.Dockerfile
     container_name: leaklens-api
     ports:
       - "10000:3000"
@@ -71,7 +128,7 @@ echo "Stopping any existing LeakLens containers..."
 docker-compose down 2>/dev/null || true
 
 echo "Building and starting LeakLens..."
-docker-compose up -d --build
+docker-compose build --no-cache api
 
 # Check if containers are running
 if docker-compose ps | grep -q "leaklens"; then
