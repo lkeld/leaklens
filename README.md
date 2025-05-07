@@ -165,8 +165,8 @@ This commutative encryption scheme ensures that Google never observes the user's
 
 ## Technology Stack
 
-*   **Backend:** Rust (using [Actix Web/Axum/Rocket - *specify your choice here*])
-*   **Frontend:** React, JavaScript/TypeScript
+*   **Backend:** Rust
+*   **Frontend:** React, TypeScript
 *   **Cryptography:**
     *   Elliptic Curve Cryptography: NIST P-256 (`secp256r1`)
     *   Hashing Algorithms: SHA256, `scrypt`
