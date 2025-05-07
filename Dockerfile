@@ -35,9 +35,9 @@ RUN node -v && npm -v
 # Copy package files
 COPY webapp/package.json webapp/package-lock.json ./
 
-# Install dependencies with CI=false to prevent treating warnings as errors
+# Install dependencies with legacy-peer-deps to resolve dependency conflicts
 ENV CI=false
-RUN npm install --no-fund --no-audit
+RUN npm install --no-fund --no-audit --legacy-peer-deps
 
 # Copy source code
 COPY webapp/ .
