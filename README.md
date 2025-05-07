@@ -57,26 +57,26 @@ LeakLens employs a sophisticated cryptographic protocol to verify credentials ag
 
 ```mermaid
 graph LR
-    A[User: Enters Username/Password] --> B(LeakLens Client/Server);
-    B --> C{1 Initial Hashing};
-    C --> C1["lookup_hash = scrypt(username, password)"];
-    C --> C2["username_hash_prefix"];
-    C1 --> D{2 Hash to Curve};
-    D --> D1["Point P = hashToTheCurve(lookup_hash)"];
-    D1 --> E(LeakLens Server);
-    E --> F{3 First Encryption (key kS)};
-    F --> F1["E_S = kS * P"];
-    F1 --> G(Google API);
-    C2 --> G;
-    G --> H{4 Second Encryption (key kG)};
-    H --> H1["E_GS = kG * E_S <br> (reencrypted_lookup_hash)"];
-    H --> H2["Encrypted Leak Prefixes <br> (kG * L_j)"];
-    H1 --> I(LeakLens Server);
-    H2 --> I;
-    I --> J{5 Decryption & Comparison};
-    J --> J1["P_G = kS_inv * E_GS = kG * P"];
-    J1 --> K{Compare SHA256(serialize(P_G)) <br> with Encrypted Leak Prefixes};
-    K --> L[Result: Leaked / Not Leaked];
+    A["User: Enters Username/Password"] --> B("LeakLens Client/Server")
+    B --> C{"1 Initial Hashing"}
+    C --> C1["lookup_hash = scrypt(username, password)"]
+    C --> C2["username_hash_prefix"]
+    C1 --> D{"2 Hash to Curve"}
+    D --> D1["Point P = hashToTheCurve(lookup_hash)"]
+    D1 --> E("LeakLens Server")
+    E --> F{"3 First Encryption (key kS)"}
+    F --> F1["E_S = kS ⋅ P"]
+    F1 --> G("Google API")
+    C2 --> G
+    G --> H{"4 Second Encryption (key kG)"}
+    H --> H1["E_GS = kG ⋅ E_S<br/>(reencrypted_lookup_hash)"]
+    H --> H2["Encrypted Leak Prefixes<br/>(kG ⋅ L_j)"]
+    H1 --> I("LeakLens Server")
+    H2 --> I
+    I --> J{"5 Decryption & Comparison"}
+    J --> J1["P_G = kS_inv ⋅ E_GS = kG ⋅ P"]
+    J1 --> K{"Compare SHA256(serialize(P_G))<br/>with Encrypted Leak Prefixes"}
+    K --> L["Result: Leaked / Not Leaked"]
 
     subgraph LeakLens System
         B
