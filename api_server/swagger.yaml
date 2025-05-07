@@ -1,0 +1,428 @@
+openapi: 3.0.3
+info:
+  title: LeakLens API
+  description: >
+    LeakLens API provides secure password leak checking by integrating with Google's Password Check API.
+    This service allows users to check if their credentials have been compromised in data breaches without 
+    revealing their actual passwords, using a cryptographic protocol based on elliptic curve commutative encryption.
+  version: '1.0.0'
+  contact:
+    name: LeakLens Team
+    email: support@leaklens.example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.leaklens.example.com
+    description: Production API server
+
+tags:
+  - name: Status
+    description: API status operations
+  - name: Leak Check
+    description: Credential leak checking operations
+
+paths:
+  /api/v1/status:
+    get:
+      summary: Get API status
+      description: Returns the current status of the API and its connection to Google's Password Check API
+      operationId: getApiStatus
+      tags:
+        - Status
+      responses:
+        '200':
+          description: API status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiStatusResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      
+  /api/v1/check/single:
+    post:
+      summary: Check single credential
+      description: >
+        Check a single username/password combination against known data breaches without revealing the actual password.
+        Uses a cryptographic protocol leveraging Google's Password Check API.
+      operationId: checkSingleCredential
+      tags:
+        - Leak Check
+      requestBody:
+        description: Username and password to check
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SingleCheckRequest'
+            example:
+              username: "user@example.com"
+              password: "password123"
+      responses:
+        '200':
+          description: Credential check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleCheckResponse'
+              example:
+                username: "user@example.com"
+                is_leaked: true
+                message: "Credential found in a known data breach"
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFields:
+                  value:
+                    error: "Username and password are required"
+                    code: "INVALID_INPUT"
+        '429':
+          description: Too many requests - rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Rate limit exceeded"
+                code: "RATE_LIMITED"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Failed to check credential: Connection error"
+                code: "CHECK_FAILED"
+                
+  /api/v1/check/batch:
+    post:
+      summary: Check multiple credentials
+      description: >
+        Upload a file containing multiple credentials to check against known data breaches.
+        The file should contain one credential per line in "username:password" format.
+      operationId: checkBatchCredentials
+      tags:
+        - Leak Check
+      requestBody:
+        description: File containing credentials to check and optional metadata
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File containing one credential per line (username:password)
+                inputType:
+                  type: string
+                  description: Type of input ("email_pass" or "email_only")
+                  enum:
+                    - email_pass
+                    - email_only
+              required:
+                - file
+      responses:
+        '200':
+          description: Batch job created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchCheckResponse'
+              example:
+                job_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                message: "Batch job started successfully"
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFile:
+                  value:
+                    error: "No file provided"
+                    code: "MISSING_FILE"
+                emptyFile:
+                  value:
+                    error: "File is empty"
+                    code: "EMPTY_FILE"
+                fileTooLarge:
+                  value:
+                    error: "File contains more than 10,000 lines"
+                    code: "FILE_TOO_LARGE"
+        '429':
+          description: Too many requests - rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Rate limit exceeded for batch operations"
+                code: "RATE_LIMITED"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              
+  /api/v1/check/batch/{job_id}/status:
+    get:
+      summary: Get batch job status and results
+      description: Retrieve the status and results of a batch credential checking job
+      operationId: getBatchJobStatus
+      tags:
+        - Leak Check
+      parameters:
+        - name: job_id
+          in: path
+          description: ID of the batch job
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Batch job status and results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchCheckResultsResponse'
+              example:
+                summary:
+                  total_processed: 3
+                  total_leaked: 1
+                  total_not_leaked: 2
+                  total_errors: 0
+                  completed: true
+                  progress_percentage: 100
+                results:
+                  - credential: "user1@example.com:••••••••"
+                    is_leaked: true
+                    status: "checked"
+                    message: null
+                  - credential: "user2@example.com:••••••••"
+                    is_leaked: false
+                    status: "checked"
+                    message: null
+                  - credential: "user3@example.com:••••••••"
+                    is_leaked: false
+                    status: "checked"
+                    message: null
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Job not found"
+                code: "JOB_NOT_FOUND"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ApiStatusResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - google_api_status
+      properties:
+        status:
+          type: string
+          description: Overall API status
+          enum:
+            - healthy
+            - degraded
+            - down
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Status timestamp in RFC3339 format
+          example: "2025-05-07T08:50:49Z"
+        google_api_status:
+          type: string
+          description: Status of the connection to Google's Password Check API
+          enum:
+            - connected
+            - disconnected
+            - unknown
+          example: "connected"
+          
+    SingleCheckRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Username (typically an email address)
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          description: Password to check
+          format: password
+          example: "password123"
+          
+    SingleCheckResponse:
+      type: object
+      required:
+        - username
+        - is_leaked
+        - message
+      properties:
+        username:
+          type: string
+          description: Username that was checked
+          format: email
+          example: "user@example.com"
+        is_leaked:
+          type: boolean
+          description: Whether the credential was found in known data breaches
+          example: true
+        message:
+          type: string
+          description: Human-readable message about the check result
+          example: "Credential found in a known data breach"
+          
+    BatchCheckResponse:
+      type: object
+      required:
+        - job_id
+        - message
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: ID of the created batch job
+          example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        message:
+          type: string
+          description: Human-readable message about the batch job creation
+          example: "Batch job started successfully"
+          
+    BatchCheckResultsResponse:
+      type: object
+      required:
+        - summary
+        - results
+      properties:
+        summary:
+          $ref: '#/components/schemas/BatchCheckSummary'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialCheckResult'
+            
+    BatchCheckSummary:
+      type: object
+      required:
+        - total_processed
+        - total_leaked
+        - total_not_leaked
+        - total_errors
+        - completed
+        - progress_percentage
+      properties:
+        total_processed:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Total number of credentials processed so far
+          example: 100
+        total_leaked:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of credentials found to be leaked
+          example: 25
+        total_not_leaked:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of credentials not found in breach data
+          example: 70
+        total_errors:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of credentials that couldn't be checked due to errors
+          example: 5
+        completed:
+          type: boolean
+          description: Whether the batch job has completed processing
+          example: true
+        progress_percentage:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+          description: Percentage of credentials processed
+          example: 100
+          
+    CredentialCheckResult:
+      type: object
+      required:
+        - credential
+        - status
+      properties:
+        credential:
+          type: string
+          description: Masked credential that was checked
+          example: "user@example.com:••••••••"
+        is_leaked:
+          type: boolean
+          nullable: true
+          description: Whether the credential was found in known data breaches (null for errors or skipped)
+          example: true
+        status:
+          type: string
+          description: Status of the check
+          enum:
+            - checked
+            - error
+            - skipped
+          example: "checked"
+        message:
+          type: string
+          nullable: true
+          description: Additional message or error details
+          example: "Connection timeout"
+          
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Rate limit exceeded"
+        code:
+          type: string
+          description: Error code for programmatic handling
+          example: "RATE_LIMITED"

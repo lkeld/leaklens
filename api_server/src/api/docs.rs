@@ -1,0 +1,83 @@
+//! API documentation routes for the LeakLens API service
+
+use axum::{
+    http::{header, StatusCode},
+    response::{Html, IntoResponse},
+    routing::get,
+    Router,
+};
+// Note: utoipa_swagger_ui::Config was imported but not used in the provided code.
+// If it's needed elsewhere, keep it. Otherwise, it can be removed.
+// use utoipa_swagger_ui::Config; 
+// std::path::Path was imported but not used in the provided code.
+// use std::path::Path;
+use tokio::fs;
+
+use crate::api::AppState;
+
+/// Create router for documentation endpoints
+pub fn docs_routes() -> Router<AppState> {
+    Router::<AppState>::new()
+        .route("/api/docs", get(serve_swagger_ui))
+        .route("/api/docs/swagger.yaml", get(serve_swagger_yaml))
+}
+
+/// Serve the Swagger UI HTML page
+async fn serve_swagger_ui() -> impl IntoResponse {
+    let html = r##"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeakLens API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css">
+    <style>
+        html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+        *, *:before, *:after { box-sizing: inherit; }
+        body { margin: 0; background: #fafafa; }
+        .swagger-ui .topbar { background-color: #1b1b1b; }
+        .swagger-ui .info .title { color: #333; font-size: 36px; }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: "/api/docs/swagger.yaml",
+                dom_id: "#swagger-ui",
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                layout: "StandaloneLayout"
+            });
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>
+    "##;
+
+    Html(html)
+}
+
+/// Serve the OpenAPI/Swagger YAML file
+async fn serve_swagger_yaml() -> impl IntoResponse {
+    match fs::read_to_string("swagger.yaml").await {
+        Ok(content) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/yaml")],
+            content,
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            "OpenAPI specification file not found",
+        )
+            .into_response(),
+    }
+}

@@ -1,0 +1,42 @@
+services:
+  # Backend API Service (Rust)
+  - type: web
+    name: leaklens-api
+    env: docker
+    rootDir: api_server
+    dockerfilePath: ./Dockerfile
+    region: ohio
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SERVER_HOST
+        value: 0.0.0.0
+      - key: SERVER_PORT
+        value: 10000
+      - key: RUST_LOG
+        value: info
+      - key: CORS_ALLOWED_ORIGINS
+        fromService:
+          name: leaklens-webapp
+          type: web
+          property: url
+    autoDeploy: true
+  
+  # Frontend Web App (Next.js)
+  - type: web
+    name: leaklens-webapp
+    env: node
+    rootDir: webapp
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    region: ohio
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: leaklens-api
+          type: web
+          property: url
+    autoDeploy: true 

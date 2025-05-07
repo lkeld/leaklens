@@ -1,0 +1,84 @@
+[package]
+name = "leaklens-api"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust API server for the LeakLens password leak checking service"
+authors = ["LeakLens Team"]
+
+[dependencies]
+# Cryptography
+p256               = "0.13.2"    # NIST P-256 curve implementation
+sha2               = "0.10.8"    # SHA256 hashing
+rand               = "0.8.5"     # Random number generation
+scrypt             = "0.11.0"    # Password hashing
+hex                = "0.4.3"     # Hex encoding/decoding
+num-bigint         = "0.4.4"     # Big integer support
+num-traits         = "0.2.17"    # Traits for numeric types
+lazy_static        = "1.4.0"     # Lazy static initialization
+
+# Protocol Buffers
+prost              = "0.12.3"    # Protocol Buffers implementation
+prost-types        = "0.12.3"    # Protocol Buffers types
+bytes              = "1.5.0"     # Byte handling utilities
+tonic              = { version = "0.10.2", features = ["transport"] }
+
+# Error Handling
+thiserror          = "1.0.51"
+anyhow             = "1.0.77"
+
+# Web framework
+axum               = { version = "0.6.20", features = ["multipart"] }
+tower-http         = { version = "0.4.0", features = ["cors", "trace", "fs"] }  # dropped "serve-dir"
+tokio              = { version = "1.35.1", features = ["full"] }
+hyper              = { version = "0.14.27", features = ["full"] }
+
+# API Documentation
+utoipa             = { version = "4.1.0", features = ["axum_extras", "yaml"] }
+utoipa-swagger-ui  = { version = "5.0.0", features = ["axum"] }
+
+# Serialization/Deserialization
+serde              = { version = "1.0.193", features = ["derive"] }
+serde_json         = "1.0.108"
+
+# For handling multipart form data
+multer             = "3.0.0"
+tokio-util         = { version = "0.7.10", features = ["io"] }
+futures            = "0.3.30"
+
+# Async traits
+async-trait        = "0.1.77"
+
+# Rate limiting
+governor           = "0.6.0"
+
+# Unique IDs
+uuid               = { version = "1.7.0", features = ["v4", "serde"] }
+
+# Time handling
+chrono             = { version = "0.4.35", features = ["serde"] }
+
+# HTTP Client for Google API
+reqwest            = { version = "0.11.23", features = ["json", "native-tls-vendored"] }
+
+# Environment & Configuration
+once_cell          = "1.19.0"
+dotenvy            = "0.15.7"
+
+# Logging & Tracing
+tracing            = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+# Add any test dependencies here
+
+[build-dependencies]
+prost-build        = "0.12.3"    # For compiling Protocol Buffers
+
+# Binary targets
+[[bin]]
+name = "api_server"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_credential_check"
+path = "src/bin/test_credential_check.rs"

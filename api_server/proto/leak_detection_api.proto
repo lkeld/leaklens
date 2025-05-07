@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package google.internal.identity.passwords.leak.check.v1;
+
+// Request to check a single credential
+message LookupSingleLeakRequest {
+  bytes username_hash_prefix = 1;
+  uint32 username_hash_prefix_length = 2;
+  bytes encrypted_lookup_hash = 3;
+}
+
+// Response containing potential matches
+message LookupSingleLeakResponse {
+  repeated bytes encrypted_leak_match_prefix = 1;
+  bytes reencrypted_lookup_hash = 2;
+}
+
+// Service definition for the Password Leak Check API
+service PasswordLeakCheckService {
+  // Check a single credential
+  rpc LookupSingleLeak(LookupSingleLeakRequest) returns (LookupSingleLeakResponse);
+}
