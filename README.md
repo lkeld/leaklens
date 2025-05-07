@@ -59,10 +59,10 @@ LeakLens employs a sophisticated cryptographic protocol to verify credentials ag
 graph LR
     A[User: Enters Username/Password] --> B(LeakLens Client/Server);
     B --> C{1. Initial Hashing};
-    C --> C1["`lookup_hash` = scrypt(username, password)"];
-    C --> C2["`username_hash_prefix`"];
+    C --> C1["lookup_hash = scrypt(username, password)"];
+    C --> C2["username_hash_prefix"];
     C1 --> D{2. Hash to Curve};
-    D --> D1["Point $P$ = hashToTheCurve(`lookup_hash`)"];
+    D --> D1["Point P = hashToTheCurve(lookup_hash)"];
     D1 --> E(LeakLens Server);
     E --> F{3. First Encryption (key $k_S$)};
     F --> F1["$E_S = k_S \cdot P$"];
@@ -193,8 +193,7 @@ cp .env.example .env
 
 # 1.3. Build and Run the Server
 cargo build --release
-cargo run --release
-```
+cargo run --release```
 
 The API server should now be operational, typically listening on `http://localhost:8000` (or as configured).
 
@@ -383,4 +382,6 @@ Please ensure your code adheres to existing style guidelines and includes releva
 This project is licensed under the **MIT License**. See the [LICENSE.md](LICENSE.md) file for full details.
 
 ---
+
+```
 
