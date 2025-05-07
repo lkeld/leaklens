@@ -82,6 +82,25 @@ RUN apt-get update && apt-get install -y \
     nginx \
     && rm -rf /var/lib/apt/lists/*
 
+# Create needed directories
+RUN mkdir -p /app/api /app/webapp /app/scripts
+
+# Create startup script directly in the final image
+RUN echo '#!/bin/bash\n\
+# Start the API server in the background\n\
+cd /app/api\n\
+./api_server &\n\
+\n\
+# Start the Next.js app in the background\n\
+cd /app/webapp\n\
+npm start &\n\
+\n\
+# Start Nginx in the foreground\n\
+nginx -g "daemon off;"\n' > /app/scripts/start.sh
+
+# Make the script executable
+RUN chmod +x /app/scripts/start.sh
+
 # Copy the Rust API build artifact
 WORKDIR /app/api
 COPY --from=api-builder /app/target/release/api_server .
@@ -121,26 +140,11 @@ server {
 }
 EOT
 
-# Create startup script
-RUN mkdir -p /app/scripts
-COPY <<-EOT /app/scripts/start.sh
-#!/bin/bash
-# Start the API server in the background
-cd /app/api
-./api_server &
-
-# Start the Next.js app in the background
-cd /app/webapp
-npm start &
-
-# Start Nginx in the foreground
-nginx -g 'daemon off;'
-EOT
-
-RUN chmod +x /app/scripts/start.sh
-
 # Expose the port
 EXPOSE 80
+
+# Set working directory to the root so we can access the script
+WORKDIR /app
 
 # Set the startup command
 CMD ["/app/scripts/start.sh"] 

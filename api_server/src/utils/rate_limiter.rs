@@ -17,7 +17,6 @@ struct RateLimitSettings {
 
 impl RateLimitSettings {
     fn new() -> Self {
-        // Get configuration from the global config
         let cfg = config::get();
         
         RateLimitSettings {

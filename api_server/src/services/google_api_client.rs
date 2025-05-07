@@ -49,7 +49,7 @@ impl GoogleApiClient {
 
         let mut request = LookupSingleLeakRequest::default();
         request.username_hash_prefix = prefix;
-        request.username_hash_prefix_length = 26; // Fixed value based on the protocol
+        request.username_hash_prefix_length = 26; // fixed value based on the protocol
         request.encrypted_lookup_hash = encrypted_lookup_hash.to_vec();
 
         let request_bytes = prost::Message::encode_to_vec(&request);

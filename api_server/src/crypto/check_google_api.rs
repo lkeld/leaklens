@@ -1,8 +1,3 @@
-//! Debug utilities for Google API check
-//!
-//! This module provides functions to help debug credential checking against Google's API
-//! and compare with the Python reference implementation.
-
 use anyhow::Result;
 use hex;
 use sha2::{Digest, Sha256};

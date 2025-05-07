@@ -1,4 +1,3 @@
-//! API documentation routes for the LeakLens API service
 
 use axum::{
     http::{header, StatusCode},
@@ -6,23 +5,17 @@ use axum::{
     routing::get,
     Router,
 };
-// Note: utoipa_swagger_ui::Config was imported but not used in the provided code.
-// If it's needed elsewhere, keep it. Otherwise, it can be removed.
-// use utoipa_swagger_ui::Config; 
-// std::path::Path was imported but not used in the provided code.
-// use std::path::Path;
+
 use tokio::fs;
 
 use crate::api::AppState;
 
-/// Create router for documentation endpoints
 pub fn docs_routes() -> Router<AppState> {
     Router::<AppState>::new()
         .route("/api/docs", get(serve_swagger_ui))
         .route("/api/docs/swagger.yaml", get(serve_swagger_yaml))
 }
 
-/// Serve the Swagger UI HTML page
 async fn serve_swagger_ui() -> impl IntoResponse {
     let html = r##"
 <!DOCTYPE html>
@@ -65,7 +58,6 @@ async fn serve_swagger_ui() -> impl IntoResponse {
     Html(html)
 }
 
-/// Serve the OpenAPI/Swagger YAML file
 async fn serve_swagger_yaml() -> impl IntoResponse {
     match fs::read_to_string("swagger.yaml").await {
         Ok(content) => (

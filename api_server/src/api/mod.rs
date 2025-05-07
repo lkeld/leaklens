@@ -27,18 +27,14 @@ pub fn create_router(job_storage: JobStorage) -> Router {
 
     let config = config::get();
     
-    // Create CORS configuration based on environment settings
     let cors = if config.server.cors_allowed_origins.contains(&"*".to_string()) {
-        // If the wildcard "*" is in the allowed origins, allow any origin
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
             .allow_headers(Any)
     } else {
-        // Otherwise, configure specific allowed origins
         let mut cors_layer = CorsLayer::new();
         
-        // Add each origin from the configuration
         for origin in &config.server.cors_allowed_origins {
             cors_layer = cors_layer.allow_origin(origin.parse::<HeaderValue>().unwrap_or_else(|_| {
                 tracing::warn!("Invalid CORS origin: {}", origin);

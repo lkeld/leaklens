@@ -32,7 +32,7 @@ pub fn username_hash_prefix(username: &str) -> Vec<u8> {
     
     let hash = hasher.finalize();
     
-    // Take the first 4 bytes and mask the last byte
+    // take the first 4 bytes and mask the last byte
     let mut result = hash[0..4].to_vec();
     result[3] &= 0b11000000;
     
@@ -83,6 +83,6 @@ mod tests {
     fn test_extract_username_from_email() {
         assert_eq!(extract_username_from_email("test@example.com"), "test");
         assert_eq!(extract_username_from_email("user.name@domain.co.uk"), "user.name");
-        assert_eq!(extract_username_from_email("username"), "username"); // Not an email
+        assert_eq!(extract_username_from_email("username"), "username"); // not an email
     }
 }

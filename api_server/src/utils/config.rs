@@ -85,7 +85,7 @@ pub fn init() -> Result<()> {
                 .parse()
                 .context("Failed to parse RATE_LIMIT_BATCH_RPM")?,
             max_batch_size: env::var("MAX_BATCH_SIZE")
-                .unwrap_or_else(|_| "10000".to_string()) // Maximum 10,000 credentials per batch
+                .unwrap_or_else(|_| "10000".to_string()) // max 10k credentials per batch
                 .parse()
                 .context("Failed to parse MAX_BATCH_SIZE")?,
         },
@@ -100,7 +100,7 @@ pub fn get() -> &'static AppConfig {
     CONFIG.get().expect("Config not initialized. Call init() first")
 }
 
-/// Example .env file
+/// example .env file
 #[allow(dead_code)]
 const ENV_EXAMPLE: &str = r#"
 # Server Configuration
