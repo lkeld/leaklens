@@ -62,6 +62,7 @@ FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl1.1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the build artifact from the builder stage
@@ -128,7 +129,18 @@ echo "Stopping any existing LeakLens containers..."
 docker-compose down 2>/dev/null || true
 
 echo "Building and starting LeakLens..."
+# First build the API
 docker-compose build --no-cache api
+
+# Then build and start all services
+echo "Starting all containers..."
+docker-compose up -d
+
+echo "Checking container status..."
+docker-compose ps
+
+# Give containers a moment to start up
+sleep 10
 
 # Check if containers are running
 if docker-compose ps | grep -q "leaklens"; then
@@ -144,5 +156,6 @@ if docker-compose ps | grep -q "leaklens"; then
   echo "To stop the service: docker-compose down"
 else
   echo "❌ Error: Failed to start LeakLens containers. Check logs with: docker-compose logs"
+  docker-compose logs
   exit 1
 fi 

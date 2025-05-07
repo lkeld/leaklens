@@ -28,34 +28,66 @@ if ! command -v docker-compose &> /dev/null; then
   exit 1
 fi
 
-# Create a special build script inside the api_server directory
-echo "Creating build helper script..."
-cat > api_server/build.rs << 'EOL'
-fn main() {
-    // Use system protoc to compile protos
-    if let Ok(protoc_path) = std::env::var("PROTOC") {
-        println!("cargo:warning=Using protoc from path: {}", protoc_path);
-    } else {
-        // Look for protoc in the system path
-        println!("cargo:warning=No PROTOC env var set, using system protoc");
-    }
+# Create a modified Dockerfile for the API server
+mkdir -p .docker-build
+cat > .docker-build/api-alt.Dockerfile << 'EOL'
+# LeakLens API Server Dockerfile (Alternative Version)
+FROM rust:1.81-slim-bullseye AS builder
 
-    // Tell Cargo to rerun this script if the proto file changes
-    println!("cargo:rerun-if-changed=proto/leak_detection_api.proto");
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    make \
+    gcc \
+    perl \
+    protobuf-compiler \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
 
-    // Invoke protoc directly to generate the files
-    println!("cargo:warning=Attempting to invoke protoc directly");
-    let status = std::process::Command::new("protoc")
-        .arg("--rust_out=./src/proto")
-        .arg("--proto_path=./proto")
-        .arg("./proto/leak_detection_api.proto")
-        .status();
+# Verify protoc is installed
+RUN which protoc && protoc --version
 
-    match status {
-        Ok(exit) => println!("cargo:warning=protoc exited with: {}", exit),
-        Err(e) => println!("cargo:warning=Failed to run protoc: {}", e),
-    }
-}
+# Set up working directory
+WORKDIR /app
+
+# Copy the entire project
+COPY . .
+
+# Set environment variable for Prost build to use system protoc
+ENV PROTOC=/usr/bin/protoc
+ENV PATH="/usr/bin:${PATH}"
+
+# Check if we can see the proto files
+RUN ls -la proto/
+
+# Build dependencies - this is done separately to cache dependencies
+RUN cargo build --release
+
+# Build the application
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bullseye-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl1.1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the build artifact from the builder stage
+WORKDIR /app
+COPY --from=builder /app/target/release/api_server .
+COPY --from=builder /app/swagger.yaml ./
+
+# Expose the port
+EXPOSE 3000
+
+# Set the startup command
+CMD ["./api_server"]
 EOL
 
 # Create docker-compose.yml file
@@ -66,7 +98,7 @@ services:
   api:
     build:
       context: ./api_server
-      dockerfile: Dockerfile
+      dockerfile: ../.docker-build/api-alt.Dockerfile
     container_name: leaklens-api
     ports:
       - "10000:3000"
@@ -112,8 +144,19 @@ EOL
 echo "Stopping any existing LeakLens containers..."
 docker-compose down 2>/dev/null || true
 
-echo "Building and starting LeakLens..."
-docker-compose up -d --build
+# First build just the API to see if it works
+echo "Building the API container first..."
+docker-compose build --no-cache api
+
+# Then start everything
+echo "Starting all containers..."
+docker-compose up -d
+
+echo "Checking container status..."
+docker-compose ps
+
+# Give containers a moment to start up
+sleep 10
 
 # Check if containers are running
 if docker-compose ps | grep -q "leaklens"; then
@@ -129,5 +172,6 @@ if docker-compose ps | grep -q "leaklens"; then
   echo "To stop the service: docker-compose down"
 else
   echo "❌ Error: Failed to start LeakLens containers. Check logs with: docker-compose logs"
+  docker-compose logs
   exit 1
 fi 
