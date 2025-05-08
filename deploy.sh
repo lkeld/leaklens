@@ -7,6 +7,10 @@ echo "============================================"
 
 # Set default values for variables
 docker_compose_cmd="docker-compose"
+USE_PREBUILT=false
+BUILD_ONLY=false
+PREBUILT_DIR="./build/prebuilt"
+SSH_KEY_FILE=""
 
 # Function to setup server environment
 setup_environment() {
@@ -47,13 +51,26 @@ setup_environment() {
     fi
   fi
   
+  # Check for jq if we're building a prebuilt package
+  if [ "$BUILD_ONLY" == "true" ] && ! command -v jq &> /dev/null; then
+    echo "Installing jq (required for package.json processing)..."
+    if [[ "$OS_NAME" == *"Ubuntu"* ]] || [[ "$OS_NAME" == *"Debian"* ]]; then
+      sudo apt-get update && sudo apt-get install -y jq
+    elif [[ "$OS_NAME" == *"CentOS"* ]] || [[ "$OS_NAME" == *"Red Hat"* ]]; then
+      sudo yum install -y jq
+    else
+      echo "Error: jq is required for creating prebuilt packages. Please install it manually."
+      echo "Visit: https://stedolan.github.io/jq/download/"
+      exit 1
+    fi
+  fi
+  
   # Create necessary directories
   echo "Creating project directories..."
-  mkdir -p api_server/src/{bin,api} api_server/proto webapp/{app,public,components}
+  mkdir -p api_server/src/bin api_server/src/api api_server/proto 
+  mkdir -p webapp/app webapp/public webapp/components
+  mkdir -p build/prebuilt/api build/prebuilt/webapp build/prebuilt/scripts
 }
-
-# Call setup function at the start
-setup_environment
 
 # Function to show usage information
 show_usage() {
@@ -66,12 +83,18 @@ show_usage() {
   echo "  -f, --fast           Use fast build mode (skip rebuilding unchanged components)"
   echo "  -s, --server HOST    Deploy to remote server (requires SSH key)"
   echo "  -c, --clean          Clean all Docker containers and images before building"
+  echo "  -p, --prebuilt       Use prebuilt binaries (for faster deployment on slow servers)"
+  echo "  -b, --build-only     Build binaries but don't deploy (creates prebuilt package)"
+  echo "  -k, --key FILE       Specify a custom SSH key file for remote deployment"
   echo ""
   echo "Examples:"
   echo "  ./deploy.sh                  # Standard local deployment"
   echo "  ./deploy.sh -f               # Fast local deployment (incremental build)"
   echo "  ./deploy.sh -s 13.236.185.53 # Deploy to remote server" 
   echo "  ./deploy.sh -c               # Clean deployment (full rebuild)"
+  echo "  ./deploy.sh -b               # Build binaries for later deployment"
+  echo "  ./deploy.sh -p -s 13.236.185.53 # Deploy prebuilt binaries to server"
+  echo "  ./deploy.sh -k ~/my-key.pem -s 13.236.185.53 # Deploy using specific SSH key"
   exit 0
 }
 
@@ -482,26 +505,31 @@ EOT
 # Function to deploy to a remote server
 remote_deploy() {
   local SERVER_HOST=$1
-  local SERVER_USER=${2:-"admin"}
-  local SERVER_PORT=${3:-"22"}
-  local SERVER_DIR=${4:-"/var/www/leakcheck"}
+  local custom_key=$2
+  local SERVER_USER=${3:-"azureuser"}
+  local SERVER_PORT=${4:-"22"}
+  local SERVER_DIR=${5:-"/var/www/leakcheck"}
   
   echo "Deploying to remote server: $SERVER_HOST"
   
-  # Define the path to the SSH key file
-  if [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "win32"* || "$OSTYPE" == "cygwin"* ]]; then
+  # Define SSH key location based on OS
+  local SSH_KEY_FILE=""
+  if [ -n "$custom_key" ]; then
+    # Use the custom key if provided
+    SSH_KEY_FILE="$custom_key"
+  elif [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "win32"* || "$OSTYPE" == "cygwin"* ]]; then
     # Windows path format
-    SSH_KEY_FILE="C:/Users/luke/Downloads/mainkey.pem"
+    SSH_KEY_FILE="C:/Users/luke/Downloads/LeakLens_key.pem"
     # Convert Windows path to appropriate format for the current shell
     SSH_KEY_FILE=$(echo $SSH_KEY_FILE | sed 's/\\/\//g')
   else
-    # Linux/Mac path format
-    SSH_KEY_FILE="/mnt/c/Users/luke/Downloads/mainkey.pem"
+    # Linux/Mac path format - provide a sensible default, but allow override
+    SSH_KEY_FILE="${SSH_KEY_FILE:-"$HOME/.ssh/LeakLens_key.pem"}"
   fi
   
   # Ensure the key file has correct permissions (ignored on Windows)
   if [[ "$OSTYPE" != "msys"* && "$OSTYPE" != "win32"* && "$OSTYPE" != "cygwin"* ]]; then
-    chmod 600 "$SSH_KEY_FILE"
+    chmod 600 "$SSH_KEY_FILE" || echo "Warning: Could not set permissions on key file. This might cause SSH to reject the key."
   fi
   
   # Check if the key file exists
@@ -512,6 +540,9 @@ remote_deploy() {
   fi
   
   echo "Using SSH key: $SSH_KEY_FILE"
+  
+  # Common SSH options
+  local SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   
   echo "Creating deployment archive..."
   # Create an archive with just the necessary files
@@ -540,14 +571,14 @@ remote_deploy() {
   
   echo "Copying files to server..."
   # Copy the archive to the server using the SSH key
-  scp -i "$SSH_KEY_FILE" -P $SERVER_PORT leaklens-deploy.tar.gz $SERVER_USER@$SERVER_HOST:~/ || {
+  scp -i "$SSH_KEY_FILE" $SSH_OPTS -P $SERVER_PORT leaklens-deploy.tar.gz $SERVER_USER@$SERVER_HOST:~/ || {
     echo "ERROR: Failed to copy files to server"
     exit 1
   }
   
   echo "Setting up and deploying on the server..."
   # Execute commands on the server using the SSH key
-  ssh -i "$SSH_KEY_FILE" -p $SERVER_PORT $SERVER_USER@$SERVER_HOST << EOF
+  ssh -i "$SSH_KEY_FILE" $SSH_OPTS -p $SERVER_PORT $SERVER_USER@$SERVER_HOST << EOF
     # Create the deployment directory if it doesn't exist
     mkdir -p $SERVER_DIR
     
@@ -568,6 +599,317 @@ EOF
   echo "Remote deployment completed!"
   echo "Your application should now be running on the server."
   echo "You can access it at: http://$SERVER_HOST:8080"
+}
+
+# Build prebuilt package for later deployment
+build_prebuilt_package() {
+  echo "Building prebuilt package for deployment..."
+  
+  # Create needed directories with -p to ensure all parent directories are created
+  mkdir -p "$PREBUILT_DIR/api" "$PREBUILT_DIR/webapp" "$PREBUILT_DIR/scripts"
+  
+  # Build the API server (Rust)
+  echo "Building Rust API server..."
+  cd api_server
+  if ! command -v cargo &> /dev/null; then
+    echo "Error: Rust not installed. Please install Rust to build the API server."
+    echo "Visit https://rustup.rs/ for installation instructions."
+    exit 1
+  fi
+  cargo build --release
+  mkdir -p "../$PREBUILT_DIR/api"
+  cp target/release/api_server "../$PREBUILT_DIR/api/api_server"
+  cp swagger.yaml "../$PREBUILT_DIR/api/" 2>/dev/null || echo "No swagger.yaml found, skipping..."
+  cd ..
+  
+  # Build the webapp (Next.js)
+  echo "Building Next.js webapp..."
+  cd webapp
+  if ! command -v npm &> /dev/null; then
+    echo "Error: Node.js not installed. Please install Node.js to build the webapp."
+    echo "Visit https://nodejs.org/ for installation instructions."
+    exit 1
+  fi
+  
+  # Install dependencies if node_modules doesn't exist
+  if [ ! -d "node_modules" ]; then
+    echo "Installing npm dependencies..."
+    npm ci --no-fund --no-audit --prefer-offline --legacy-peer-deps
+  fi
+  
+  # Build the Next.js app
+  echo "Building Next.js app..."
+  NODE_OPTIONS=--max_old_space_size=4096 npm run build
+  
+  # Create package.json with only production dependencies
+  if command -v jq &> /dev/null; then
+    echo "Creating minimal package.json with jq..."
+    jq 'del(.devDependencies) | .dependencies."next" = "15.2.4" | .dependencies."react" = "^19" | .dependencies."react-dom" = "^19"' "$(pwd)/package.json" > "../$PREBUILT_DIR/webapp/package.json" || {
+      echo "Failed to process package.json with jq. Falling back to manual method."
+      cat > "../$PREBUILT_DIR/webapp/package.json" << 'EOT'
+{
+  "name": "leaklens-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.2.4",
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}
+EOT
+    }
+  else
+    echo "Creating minimal package.json without jq (fallback method)..."
+    cat > "../$PREBUILT_DIR/webapp/package.json" << 'EOT'
+{
+  "name": "leaklens-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.2.4",
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}
+EOT
+  fi
+  
+  # Copy the built app
+  cp -r .next "../$PREBUILT_DIR/webapp/"
+  cp -r public "../$PREBUILT_DIR/webapp/"
+  cd ..
+  
+  # Create a minimal Docker Compose file for prebuilt deployment
+  cat > "$PREBUILT_DIR/docker-compose.yml" << EOT
+version: '3.8'
+
+services:
+  leaklens:
+    image: leaklens-prebuilt
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+EOT
+
+  # Create a simplified Dockerfile for prebuilt deployment
+  cat > "$PREBUILT_DIR/Dockerfile.prebuilt" << EOT
+FROM debian:bullseye-slim
+
+# Set environment variable to avoid debconf errors
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies, Nginx, Node.js
+RUN apt-get update && apt-get install -y \\
+    ca-certificates \\
+    libssl1.1 \\
+    nginx \\
+    curl \\
+    gnupg \\
+    && rm -rf /var/lib/apt/lists/* \\
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \\
+    && apt-get update && apt-get install -y \\
+    nodejs \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Create needed directories
+RUN mkdir -p /app/api /app/webapp /app/scripts
+
+# Create startup script
+COPY scripts/start.sh /app/scripts/
+RUN chmod +x /app/scripts/start.sh
+
+# Copy the Rust API build artifact
+WORKDIR /app/api
+COPY api/* ./
+
+# Copy the Next.js webapp
+WORKDIR /app/webapp
+COPY webapp/package.json /app/webapp/
+COPY webapp/.next /app/webapp/.next
+COPY webapp/public /app/webapp/public
+
+# Install production dependencies only
+RUN npm install --production --no-fund --no-audit
+
+# Configure Nginx
+RUN echo 'server { \\
+    listen 80; \\
+    server_name localhost; \\
+    \\
+    location /api/ { \\
+        proxy_pass http://localhost:3000/; \\
+        proxy_http_version 1.1; \\
+        proxy_set_header Upgrade $http_upgrade; \\
+        proxy_set_header Connection "upgrade"; \\
+        proxy_set_header Host $host; \\
+        proxy_cache_bypass $http_upgrade; \\
+    } \\
+    \\
+    location / { \\
+        proxy_pass http://localhost:3001; \\
+        proxy_http_version 1.1; \\
+        proxy_set_header Upgrade $http_upgrade; \\
+        proxy_set_header Connection "upgrade"; \\
+        proxy_set_header Host $host; \\
+        proxy_cache_bypass $http_upgrade; \\
+    } \\
+}' > /etc/nginx/sites-available/default
+
+# Expose the port
+EXPOSE 80
+
+# Set working directory to the root so we can access the script
+WORKDIR /app
+
+# Set the startup command
+CMD ["/app/scripts/start.sh"]
+EOT
+
+  # Create the startup script
+  mkdir -p "$PREBUILT_DIR/scripts"
+  cat > "$PREBUILT_DIR/scripts/start.sh" << 'EOT'
+#!/bin/bash
+set -e
+
+echo "Starting LeakLens application..."
+
+# Start the API server in the background
+echo "Starting API server..."
+cd /app/api
+./api_server &
+API_PID=$!
+
+# Start the Next.js app in the background
+echo "Starting Next.js webapp..."
+cd /app/webapp
+npm start &
+NEXT_PID=$!
+
+echo "Starting Nginx..."
+# Start Nginx in the foreground
+nginx -g "daemon off;" &
+NGINX_PID=$!
+
+# Wait for any process to exit
+wait -n
+
+# Exit with status of process that exited first
+exit $?
+EOT
+
+  # Create a tar.gz of the prebuilt package
+  echo "Creating prebuilt package archive..."
+  tar -czf leaklens-prebuilt.tar.gz -C "$PREBUILT_DIR" .
+  
+  echo "✅ Prebuilt package created successfully: leaklens-prebuilt.tar.gz"
+  echo "Use './deploy.sh -p -s YOUR_SERVER_IP' to deploy this package to your server."
+}
+
+# Deploy the prebuilt package
+deploy_prebuilt() {
+  local target=$1
+  local custom_key=$2
+  
+  if [ ! -f "leaklens-prebuilt.tar.gz" ]; then
+    echo "Error: No prebuilt package found. Please run './deploy.sh -b' first to create a prebuilt package."
+    exit 1
+  fi
+  
+  if [ "$target" == "local" ]; then
+    echo "Deploying prebuilt package locally..."
+    
+    # Extract the prebuilt package
+    mkdir -p prebuilt_deploy
+    tar -xzf leaklens-prebuilt.tar.gz -C prebuilt_deploy
+    
+    # Deploy using Docker
+    cd prebuilt_deploy
+    $docker_compose_cmd build
+    $docker_compose_cmd up -d
+    cd ..
+    
+    echo "✅ Prebuilt LeakLens is now running locally!"
+    echo "You can access LeakLens at: http://localhost:8080"
+  else
+    echo "Deploying prebuilt package to server: $target"
+    
+    # Define the default SSH user and server directory
+    local SERVER_USER=${3:-"azureuser"}
+    local SERVER_DIR=${4:-"/var/www/leakcheck"}
+    
+    # Define SSH key location based on OS
+    local SSH_KEY_FILE=""
+    if [ -n "$custom_key" ]; then
+      # Use the custom key if provided
+      SSH_KEY_FILE="$custom_key"
+    elif [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "win32"* || "$OSTYPE" == "cygwin"* ]]; then
+      # Windows path format
+      SSH_KEY_FILE="C:/Users/luke/Downloads/LeakLens_key.pem"
+      # Convert Windows path to appropriate format for the current shell
+      SSH_KEY_FILE=$(echo $SSH_KEY_FILE | sed 's/\\/\//g')
+    else
+      # Linux/Mac path format - provide a sensible default, but allow override
+      SSH_KEY_FILE="${SSH_KEY_FILE:-"$HOME/.ssh/LeakLens_key.pem"}"
+    fi
+    
+    echo "Using SSH key file: $SSH_KEY_FILE"
+    
+    # Ensure the key file has correct permissions (ignored on Windows)
+    if [[ "$OSTYPE" != "msys"* && "$OSTYPE" != "win32"* && "$OSTYPE" != "cygwin"* ]]; then
+      chmod 600 "$SSH_KEY_FILE" || echo "Warning: Could not set permissions on key file. This might cause SSH to reject the key."
+    fi
+    
+    # Verify the key file exists
+    if [ ! -f "$SSH_KEY_FILE" ]; then
+      echo "Error: SSH key file not found at $SSH_KEY_FILE"
+      echo "Please ensure the file exists and the path is correct."
+      exit 1
+    fi
+    
+    # Common SSH options
+    local SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    
+    # Copy the prebuilt package to the server using the key
+    echo "Copying prebuilt package to server..."
+    scp -i "$SSH_KEY_FILE" $SSH_OPTS "leaklens-prebuilt.tar.gz" "$SERVER_USER@$target:~/"
+    
+    # SSH into the server and deploy
+    echo "Deploying on server..."
+    ssh -i "$SSH_KEY_FILE" $SSH_OPTS "$SERVER_USER@$target" << EOF
+      # Create the deployment directory if it doesn't exist
+      mkdir -p $SERVER_DIR
+      
+      # Extract the prebuilt package
+      tar -xzf ~/leaklens-prebuilt.tar.gz -C $SERVER_DIR
+      
+      # Deploy using Docker
+      cd $SERVER_DIR
+      docker-compose build
+      docker-compose up -d
+      
+      # Clean up
+      rm ~/leaklens-prebuilt.tar.gz
+EOF
+    
+    echo "✅ Prebuilt LeakLens is now running on the server!"
+    echo "You can access LeakLens at: http://$target:8080"
+  fi
 }
 
 # Parse command line arguments
@@ -599,6 +941,18 @@ while [[ $# -gt 0 ]]; do
       CLEAN_MODE=true
       shift
       ;;
+    -p|--prebuilt)
+      USE_PREBUILT=true
+      shift
+      ;;
+    -b|--build-only)
+      BUILD_ONLY=true
+      shift
+      ;;
+    -k|--key)
+      SSH_KEY_FILE="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
       show_usage
@@ -609,10 +963,34 @@ done
 # Main deployment logic
 echo "Starting LeakLens deployment process..."
 
+# Call setup function
+setup_environment
+
 # Set up error handling
 trap 'echo "Error: Deployment failed. Check logs above for details."; exit 1' ERR
 
-# Check Docker install
+# Check if we're just building a prebuilt package
+if [ "$BUILD_ONLY" == "true" ]; then
+  echo "Building prebuilt package only, no deployment..."
+  build_prebuilt_package
+  echo "Prebuilt package built successfully. You can deploy it with: ./deploy.sh -p [-s SERVER_HOST]"
+  exit 0
+fi
+
+# Check if we're using prebuilt package for deployment
+if [ "$USE_PREBUILT" == "true" ]; then
+  if [ "$SERVER_DEPLOY" == "true" ]; then
+    echo "Deploying prebuilt package to server: $SERVER_HOST"
+    deploy_prebuilt "$SERVER_HOST" "$SSH_KEY_FILE"
+  else
+    echo "Deploying prebuilt package locally"
+    deploy_prebuilt "local" "$SSH_KEY_FILE"
+  fi
+  echo "Prebuilt deployment completed successfully!"
+  exit 0
+fi
+
+# Regular deployment flow - only check Docker if not using prebuilt
 check_docker
 
 # Clean if requested
@@ -631,7 +1009,7 @@ if [ "$SERVER_DEPLOY" == "true" ]; then
     echo "Error: Server host is required for remote deployment."
     show_usage
   fi
-  remote_deploy "$SERVER_HOST"
+  remote_deploy "$SERVER_HOST" "$SSH_KEY_FILE"
 fi
 
 if [ "$LOCAL_DEPLOY" == "true" ]; then

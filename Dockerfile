@@ -20,11 +20,13 @@ WORKDIR /app
 
 # First, copy only the files needed for dependency resolution
 COPY api_server/Cargo.toml api_server/Cargo.lock ./
+COPY api_server/.env ./
 
-# Create a dummy main.rs to build dependencies
+# Create dummy source files to build dependencies
 RUN mkdir -p src/bin && \
-    echo 'fn main() { println!("Dummy"); }' > src/bin/api_server.rs && \
-    echo 'fn main() { println!("Test Credential Check"); }' > src/bin/test_credential_check.rs
+    echo 'fn main() { println!("Dummy"); }' > src/main.rs && \
+    echo 'fn main() { println!("Test Credential Check"); }' > src/bin/test_credential_check.rs && \
+    echo 'pub fn dummy() {}' > src/lib.rs
 
 # Build only the dependencies
 RUN cargo build --release
@@ -146,6 +148,7 @@ RUN chmod +x /app/scripts/start.sh
 WORKDIR /app/api
 COPY --from=api-builder /app/target/release/api_server .
 COPY --from=api-builder /app/swagger.yaml ./
+COPY --from=api-builder /app/.env ./
 
 # Copy the Next.js webapp
 WORKDIR /app/webapp
