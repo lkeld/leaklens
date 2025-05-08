@@ -75,6 +75,14 @@ local_deploy() {
   echo "Cleaning up dangling Docker images..."
   docker image prune -f || true
 
+  # Pre-build check: Verify that required files exist
+  echo "Checking for required source files..."
+  if [ ! -f "api_server/Cargo.toml" ] || [ ! -f "api_server/Cargo.lock" ]; then
+    echo "ERROR: Missing Rust project files in api_server directory."
+    echo "Please ensure Cargo.toml and Cargo.lock exist in the api_server directory."
+    exit 1
+  fi
+
   # Always use BuildKit for better performance
   export DOCKER_BUILDKIT=1
 
