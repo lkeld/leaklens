@@ -56,18 +56,36 @@ WORKDIR /app
 # Display Node.js and npm versions for debugging
 RUN node -v && npm -v
 
+# Configure npm for better network resilience
+RUN npm config set registry https://registry.npmjs.org/ \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set network-timeout 300000
+
 # Copy package files
 COPY webapp/package.json webapp/package-lock.json ./
 
 # Install dependencies with legacy-peer-deps to resolve dependency conflicts
+# Add retry logic for network issues
 ENV CI=false
-RUN npm install --no-fund --no-audit --legacy-peer-deps
+RUN for i in $(seq 1 3); do \
+      echo "Attempt $i: Installing npm packages..." && \
+      npm install --no-fund --no-audit --legacy-peer-deps && break || \
+      echo "Attempt $i failed. Retrying in 10 seconds..." && \
+      sleep 10; \
+    done
 
 # Copy source code
 COPY webapp/ .
 
-# Build the application
-RUN npm run build
+# Build the application with retry logic
+RUN for i in $(seq 1 3); do \
+      echo "Attempt $i: Building the application..." && \
+      npm run build && break || \
+      echo "Attempt $i failed. Retrying in 10 seconds..." && \
+      sleep 10; \
+    done
 
 # Runtime stage
 FROM debian:bullseye-slim
