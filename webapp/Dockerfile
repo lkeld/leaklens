@@ -2,7 +2,7 @@
 # Multi-stage build for optimized production image
 
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20.10-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -10,8 +10,9 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with legacy-peer-deps to resolve dependency conflicts
+ENV CI=false
+RUN npm install --no-fund --no-audit --legacy-peer-deps
 
 # Copy source code
 COPY . .
@@ -20,20 +21,19 @@ COPY . .
 RUN npm run build
 
 # Runtime stage
-FROM node:20-alpine
+FROM node:20.10-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Set environment variables
-ENV NODE_ENV production
-ENV PORT 3001
-
-# Copy built assets from builder stage
-COPY --from=builder /app/package.json /app/package-lock.json ./
-COPY --from=builder /app/node_modules ./node_modules
+# Copy built app from builder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json ./package-lock.json
+
+# Install only production dependencies
+RUN npm install --only=production --legacy-peer-deps
 
 # Expose the port
 EXPOSE 3001
