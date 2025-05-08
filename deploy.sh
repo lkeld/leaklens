@@ -30,7 +30,7 @@ docker image prune -f || true
 
 # Build and start the containers with increased verbosity
 echo "Building and starting LeakLens..."
-docker-compose build --no-cache --progress=plain || {
+docker-compose build --no-cache || {
     echo "Error: Failed to build Docker images."
     exit 1
 }
