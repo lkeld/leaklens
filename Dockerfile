@@ -18,14 +18,22 @@ RUN apt-get update && apt-get install -y \
 # Set up working directory
 WORKDIR /app
 
-# Copy the API server code
+# First, copy only the files needed for dependency resolution
+COPY api_server/Cargo.toml api_server/Cargo.lock ./
+
+# Create a dummy main.rs to build dependencies
+RUN mkdir -p src/bin && \
+    echo 'fn main() { println!("Dummy"); }' > src/bin/api_server.rs && \
+    echo 'fn main() { println!("Test Credential Check"); }' > src/bin/test_credential_check.rs
+
+# Build only the dependencies
+RUN cargo build --release
+
+# Remove the dummy source files
+RUN rm -rf src
+
+# Now copy the real source code
 COPY api_server/ .
-
-# Create or touch the missing file
-RUN mkdir -p src/bin && touch src/bin/test_credential_check.rs
-
-# Fix warnings and add minimal content to the test file
-RUN echo 'fn main() { println!("Test Credential Check"); }' > src/bin/test_credential_check.rs
 
 # Fix unused imports and variable warnings WITHOUT adding underscores
 RUN if [ -f src/api/check_routes.rs ]; then \
@@ -41,11 +49,8 @@ RUN if [ -f src/api/check_routes.rs ]; then \
     sed -i 's/if let Some(_job) = jobs.remove/if let Some(job) = jobs.remove/g' src/api/check_routes.rs; \
     fi
 
-# Build dependencies - this is done separately to cache dependencies
+# Build the application 
 RUN cargo build --release
-
-# Build the application
-RUN cargo clean && cargo build --release
 
 # Build WebApp stage
 FROM node:20.10-alpine AS webapp-builder
@@ -53,25 +58,21 @@ FROM node:20.10-alpine AS webapp-builder
 # Set working directory
 WORKDIR /app
 
-# Display Node.js and npm versions for debugging
-RUN node -v && npm -v
+# Copy package files first (for better caching)
+COPY webapp/package.json webapp/package-lock.json ./
 
 # Configure npm for better network resilience
 RUN npm config set registry https://registry.npmjs.org/ \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm config set timeout 300000
-
-# Copy package files
-COPY webapp/package.json webapp/package-lock.json ./
+    && npm config set fetch-retry-maxtimeout 120000
 
 # Install dependencies with legacy-peer-deps to resolve dependency conflicts
 # Add retry logic for network issues
 ENV CI=false
 RUN for i in $(seq 1 3); do \
       echo "Attempt $i: Installing npm packages..." && \
-      npm install --no-fund --no-audit --legacy-peer-deps && break || \
+      npm ci --no-fund --no-audit --prefer-offline --legacy-peer-deps && break || \
       echo "Attempt $i failed. Retrying in 10 seconds..." && \
       sleep 10; \
     done
@@ -82,7 +83,7 @@ COPY webapp/ .
 # Build the application with retry logic
 RUN for i in $(seq 1 3); do \
       echo "Attempt $i: Building the application..." && \
-      npm run build && break || \
+      NODE_OPTIONS=--max_old_space_size=4096 npm run build && break || \
       echo "Attempt $i failed. Retrying in 10 seconds..." && \
       sleep 10; \
     done

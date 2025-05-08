@@ -28,10 +28,13 @@ docker image prune -f || true
 # Pull the latest images if using pre-built images or skip if building locally
 # docker-compose pull || true
 
-# Build and start the containers with increased verbosity
+# Build and start the containers
 echo "Building and starting LeakLens..."
-docker-compose build --no-cache || {
+# Build with a timeout to prevent hanging builds
+DOCKER_BUILDKIT=1 docker-compose build --no-cache || {
     echo "Error: Failed to build Docker images."
+    echo "Checking Docker build logs..."
+    docker-compose logs
     exit 1
 }
 
@@ -42,6 +45,10 @@ docker-compose up -d || {
     docker-compose logs
     exit 1
 }
+
+# Wait a moment for containers to fully start
+echo "Waiting for services to start..."
+sleep 10
 
 # Check if containers are running
 if docker-compose ps | grep -q "leaklens"; then

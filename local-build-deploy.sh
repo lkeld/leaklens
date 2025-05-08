@@ -4,8 +4,11 @@
 set -e
 
 echo "============================================"
-echo "  LeakLens Local Build and Server Deploy    "
+echo "     LeakLens Local Build & Deploy          "
 echo "============================================"
+
+# This script is for local development and testing
+# It avoids full rebuilds where possible
 
 # Define variables - change these to match your environment
 SERVER_USER="admin"
@@ -44,174 +47,86 @@ if ! command -v docker &> /dev/null; then
   exit 1
 fi
 
-echo "Step 1: Creating deployment files..."
-
-# Create a new docker-compose.yml file
-cat > docker-compose.production.yml << EOL
-version: '3.8'
-
-services:
-  api:
-    build:
-      context: ./api_server
-      dockerfile: Dockerfile
-    container_name: leaklens-api
-    ports:
-      - "10000:3000"
-    environment:
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=3000
-      - RUST_LOG=info
-      - CORS_ALLOWED_ORIGINS=http://localhost:3001,http://webapp:3001
-    restart: unless-stopped
-    networks:
-      - leaklens-network
-
-  webapp:
-    build:
-      context: ./webapp
-      dockerfile: Dockerfile
-      args:
-        - NODE_ENV=production
-    container_name: leaklens-webapp
-    depends_on:
-      - api
-    ports:
-      - "8080:3001"
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://api:3000
-    restart: unless-stopped
-    networks:
-      - leaklens-network
-
-networks:
-  leaklens-network:
-    driver: bridge
-EOL
-
-# Create a Dockerfile for the API server if it doesn't already exist or is incomplete
-if [ ! -f "api_server/Dockerfile" ] || ! grep -q "FROM rust:" "api_server/Dockerfile"; then
-  cat > api_server/Dockerfile << EOL
-FROM rust:1.81-slim-bullseye AS builder
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \\
-    pkg-config \\
-    libssl-dev \\
-    protobuf-compiler \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Create a new empty project
-WORKDIR /app
-COPY . .
-
-# Build the application
-RUN cargo build --release
-
-# Runtime stage
-FROM debian:bullseye-slim
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \\
-    ca-certificates \\
-    libssl1.1 \\
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy the binary from builder
-COPY --from=builder /app/target/release/api_server .
-COPY --from=builder /app/swagger.yaml .
-
-# Set executable permissions
-RUN chmod +x ./api_server
-
-# Set the startup command
-CMD ["./api_server"]
-EOL
+# Check if Docker Compose is installed
+if ! command -v docker-compose &> /dev/null; then
+  echo "Error: Docker Compose is not installed. Please install Docker Compose first."
+  exit 1
 fi
 
-# Create a Dockerfile for the webapp if it doesn't already exist or is incomplete
-if [ ! -f "webapp/Dockerfile" ] || ! grep -q "FROM node:" "webapp/Dockerfile"; then
-  cat > webapp/Dockerfile << EOL
-FROM node:20.10-alpine AS builder
+# Function to check if container needs rebuilding
+needs_rebuild() {
+    local service=$1
+    local changed_files=$2
+    
+    if [[ -z "$(docker-compose ps -q $service 2>/dev/null)" ]]; then
+        echo "Service $service does not exist. Build needed."
+        return 0
+    fi
+    
+    if [[ ! -z "$changed_files" ]]; then
+        echo "Source files have changed. Build needed."
+        return 0
+    fi
+    
+    echo "No rebuild needed for $service."
+    return 1
+}
 
-# Set working directory
-WORKDIR /app
-
-# Copy package files
-COPY package.json package-lock.json ./
-
-# Install dependencies with legacy-peer-deps to resolve dependency conflicts
-ENV CI=false
-RUN npm install --no-fund --no-audit --legacy-peer-deps
-
-# Copy source code
-COPY . .
-
-# Build the application
-RUN npm run build
-
-# Runtime stage
-FROM node:20.10-alpine
-
-WORKDIR /app
-
-# Copy built app from builder
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/package-lock.json ./package-lock.json
-
-# Install only production dependencies
-RUN npm install --only=production --legacy-peer-deps
-
-# Expose port
-EXPOSE 3001
-
-# Start the app
-CMD ["npm", "start"]
-EOL
-fi
-
-# Create a deployment script
-cat > deploy.sh << EOL
-#!/bin/bash
-set -e
-
-echo "Deploying LeakLens with Docker"
+# Check for changes in source files
+API_CHANGES=$(find api_server -type f -not -path "*/target/*" -not -path "*/\.*" -newer .last_api_build 2>/dev/null)
+WEB_CHANGES=$(find webapp -type f -not -path "*/node_modules/*" -not -path "*/\.*" -newer .last_web_build 2>/dev/null)
 
 # Stop any existing containers
 echo "Stopping any existing LeakLens containers..."
-docker-compose -f docker-compose.production.yml down 2>/dev/null || true
+docker-compose down || true
 
-# Pull the latest changes if needed
-# git pull
+# Always use BuildKit for better performance
+export DOCKER_BUILDKIT=1
 
-# Start the containers
-echo "Starting LeakLens..."
-docker-compose -f docker-compose.production.yml up -d --build
+# Selective rebuild based on changes
+if needs_rebuild "leaklens" "$API_CHANGES$WEB_CHANGES"; then
+    echo "Building LeakLens container..."
+    docker-compose build
+    touch .last_api_build
+    touch .last_web_build
+else
+    echo "Skipping build as no changes detected."
+fi
+
+echo "Starting services..."
+docker-compose up -d || {
+    echo "Error: Failed to start Docker containers."
+    echo "Checking logs..."
+    docker-compose logs
+    exit 1
+}
+
+# Wait a moment for containers to fully start
+echo "Waiting for services to start..."
+sleep 5
 
 # Check if containers are running
-if docker-compose -f docker-compose.production.yml ps | grep -q "leaklens"; then
-  echo "✅ LeakLens is now running!"
-  
-  # Get server IP
-  SERVER_IP=\$(hostname -I | awk '{print \$1}')
-  
-  echo ""
-  echo "You can access LeakLens at: http://\$SERVER_IP:8080"
-  echo ""
-  echo "To view logs: docker-compose -f docker-compose.production.yml logs -f"
-  echo "To stop the service: docker-compose -f docker-compose.production.yml down"
+if docker-compose ps | grep -q "leaklens"; then
+    echo "✅ LeakLens is now running!"
+    
+    # Get server IP (or localhost if local)
+    if command -v hostname &> /dev/null; then
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+    else
+        SERVER_IP="localhost"
+    fi
+    
+    echo ""
+    echo "You can access LeakLens at: http://$SERVER_IP:8080"
+    echo ""
+    echo "To view logs: docker-compose logs -f"
+    echo "To stop the service: docker-compose down"
 else
-  echo "❌ Error: Failed to start LeakLens containers. Check logs with: docker-compose -f docker-compose.production.yml logs"
-  exit 1
+    echo "❌ Error: Failed to start LeakLens containers."
+    echo "Checking logs..."
+    docker-compose logs
+    exit 1
 fi
-EOL
-
-chmod +x deploy.sh
 
 echo "Step 2: Creating deployment archive..."
 # Create an archive with just the necessary files
