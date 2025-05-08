@@ -25,7 +25,7 @@ function formatApiUrl(url: string): string {
 }
 
 // API base URL - This can be overridden by environment variables in production
-export const API_URL = formatApiUrl(process.env.NEXT_PUBLIC_API_URL || 'localhost:3000');
+export const API_URL = formatApiUrl(process.env.NEXT_PUBLIC_API_URL || '/');
 
 // Helper function to construct the proper API endpoint
 function getApiEndpoint(endpoint: string): string {

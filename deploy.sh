@@ -609,16 +609,25 @@ build_prebuilt_package() {
   mkdir -p "$PREBUILT_DIR/api" "$PREBUILT_DIR/webapp" "$PREBUILT_DIR/scripts"
   
   # Build the API server (Rust)
-  echo "Building Rust API server..."
+  echo "Building Rust API server for static linking (musl)..."
   cd api_server
   if ! command -v cargo &> /dev/null; then
-    echo "Error: Rust not installed. Please install Rust to build the API server."
+    echo "Error: Rust (cargo) not installed. Please install Rust to build the API server."
     echo "Visit https://rustup.rs/ for installation instructions."
     exit 1
   fi
-  cargo build --release
+  # Add the musl target if it's not already installed
+  if ! rustup target list --installed | grep -q "x86_64-unknown-linux-musl"; then
+    echo "x86_64-unknown-linux-musl target not found, installing..."
+    rustup target add x86_64-unknown-linux-musl
+  fi
+  
+  # Build for the musl target
+  cargo build --release --target x86_64-unknown-linux-musl
+  
   mkdir -p "../$PREBUILT_DIR/api"
-  cp target/release/api_server "../$PREBUILT_DIR/api/api_server"
+  # Copy the statically linked binary from the correct target directory
+  cp target/x86_64-unknown-linux-musl/release/api_server "../$PREBUILT_DIR/api/api_server"
   cp swagger.yaml "../$PREBUILT_DIR/api/" 2>/dev/null || echo "No swagger.yaml found, skipping..."
   cd ..
   
@@ -644,7 +653,7 @@ build_prebuilt_package() {
   # Create package.json with only production dependencies
   if command -v jq &> /dev/null; then
     echo "Creating minimal package.json with jq..."
-    jq 'del(.devDependencies) | .dependencies."next" = "15.2.4" | .dependencies."react" = "^19" | .dependencies."react-dom" = "^19"' "$(pwd)/package.json" > "../$PREBUILT_DIR/webapp/package.json" || {
+    jq 'del(.devDependencies) | .dependencies."next" = "15.2.4" | .dependencies."react" = "^18" | .dependencies."react-dom" = "^18"' "$(pwd)/package.json" > "../$PREBUILT_DIR/webapp/package.json" || {
       echo "Failed to process package.json with jq. Falling back to manual method."
       cat > "../$PREBUILT_DIR/webapp/package.json" << 'EOT'
 {
@@ -659,8 +668,9 @@ build_prebuilt_package() {
   },
   "dependencies": {
     "next": "15.2.4",
-    "react": "^19",
-    "react-dom": "^19"
+    "react": "^18",
+    "react-dom": "^18",
+    "vaul": "^0.9.6"
   }
 }
 EOT
@@ -680,8 +690,9 @@ EOT
   },
   "dependencies": {
     "next": "15.2.4",
-    "react": "^19",
-    "react-dom": "^19"
+    "react": "^18",
+    "react-dom": "^18",
+    "vaul": "^0.9.6"
   }
 }
 EOT
@@ -692,7 +703,83 @@ EOT
   cp -r public "../$PREBUILT_DIR/webapp/"
   cd ..
   
+  # Create the Nginx configuration file for prebuilt deployment
+  cat > "$PREBUILT_DIR/nginx.default.conf" << 'EOT_NGINX_CONF'
+server {
+    listen 80;
+    server_name leaklens.0x.lv www.leaklens.0x.lv;
+
+    # ACME challenge for Certbot
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name leaklens.0x.lv www.leaklens.0x.lv;
+
+    ssl_certificate /etc/letsencrypt/live/leaklens.0x.lv/fullchain.pem; #managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/leaklens.0x.lv/privkey.pem; #managed by Certbot
+
+    # SSL Best Practices
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m; # about 40000 sessions
+    ssl_session_tickets off;
+    # add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always; # Consider enabling HSTS after confirming everything works
+
+    location /api/ {
+        proxy_pass http://localhost:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOT_NGINX_CONF
+
   # Create a minimal Docker Compose file for prebuilt deployment
+  # Use environment's GOOGLE_CLIENT_ID if set, otherwise use a placeholder
+  local google_client_id_value=${GOOGLE_CLIENT_ID:-"YOUR_GOOGLE_CLIENT_ID_HERE_PLEASE_REPLACE"}
+  local google_client_secret_value=${GOOGLE_CLIENT_SECRET:-"YOUR_GOOGLE_CLIENT_SECRET_HERE_PLEASE_REPLACE"}
+  local google_refresh_token_value=${GOOGLE_REFRESH_TOKEN:-"YOUR_GOOGLE_REFRESH_TOKEN_HERE_PLEASE_REPLACE"}
+  local jwt_secret_value=${JWT_SECRET:-"YOUR_JWT_SECRET_HERE_PLEASE_REPLACE"}
+  local database_url_value=${DATABASE_URL:-"YOUR_DATABASE_URL_HERE_PLEASE_REPLACE"}
+  
+  if [ "$google_client_id_value" == "YOUR_GOOGLE_CLIENT_ID_HERE_PLEASE_REPLACE" ]; then
+    echo "Warning: GOOGLE_CLIENT_ID is not set in your environment. A placeholder will be used."
+  fi
+  if [ "$google_client_secret_value" == "YOUR_GOOGLE_CLIENT_SECRET_HERE_PLEASE_REPLACE" ]; then
+    echo "Warning: GOOGLE_CLIENT_SECRET is not set in your environment. A placeholder will be used."
+  fi
+  if [ "$google_refresh_token_value" == "YOUR_GOOGLE_REFRESH_TOKEN_HERE_PLEASE_REPLACE" ]; then
+    echo "Warning: GOOGLE_REFRESH_TOKEN is not set in your environment. A placeholder will be used."
+  fi
+  if [ "$jwt_secret_value" == "YOUR_JWT_SECRET_HERE_PLEASE_REPLACE" ]; then
+    echo "Warning: JWT_SECRET is not set in your environment. A placeholder will be used."
+  fi
+  if [ "$database_url_value" == "YOUR_DATABASE_URL_HERE_PLEASE_REPLACE" ]; then
+    echo "Warning: DATABASE_URL is not set in your environment. A placeholder will be used."
+  fi
+
   cat > "$PREBUILT_DIR/docker-compose.yml" << EOT
 version: '3.8'
 
@@ -703,8 +790,23 @@ services:
       context: .
       dockerfile: Dockerfile.prebuilt
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
     restart: unless-stopped
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    environment:
+      # These will be sourced from the .env file on the deployment server
+      - GOOGLE_CLIENT_ID=\${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=\${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REFRESH_TOKEN=\${GOOGLE_REFRESH_TOKEN}
+      - JWT_SECRET=\${JWT_SECRET}
+      - DATABASE_URL=\${DATABASE_URL}
+      # Add any other necessary environment variables for your api_server here.
+      # Ensure they also use the \${VAR_NAME} syntax if they should be sourced from .env on the server.
+      # For example:
+      # - OTHER_VARIABLE=\${OTHER_VARIABLE}
 EOT
 
   # Create a simplified Dockerfile for prebuilt deployment
@@ -715,24 +817,28 @@ FROM debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies, Nginx, Node.js
-RUN apt-get update && apt-get install -y \\
-    ca-certificates \\
-    libssl1.1 \\
-    nginx \\
-    curl \\
-    gnupg \\
-    && rm -rf /var/lib/apt/lists/* \\
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \\
-    && apt-get update && apt-get install -y \\
-    nodejs \\
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl1.1 \
+    nginx \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Create needed directories
-RUN mkdir -p /app/api /app/webapp /app/scripts
+RUN mkdir -p /app/api /app/webapp /app/scripts /var/www/certbot && chown www-data:www-data /var/www/certbot
 
 # Create startup script
 COPY scripts/start.sh /app/scripts/
 RUN chmod +x /app/scripts/start.sh
+
+# Copy dummy SSL certificates to allow Nginx to start
+# These will be overridden by real certs mounted from the host after Certbot runs
+COPY dummy_certs/ /etc/letsencrypt/
 
 # Copy the Rust API build artifact
 WORKDIR /app/api
@@ -748,28 +854,7 @@ COPY webapp/public /app/webapp/public
 RUN npm install --production --no-fund --no-audit
 
 # Configure Nginx
-RUN echo 'server { \\
-    listen 80; \\
-    server_name localhost; \\
-    \\
-    location /api/ { \\
-        proxy_pass http://localhost:3000/; \\
-        proxy_http_version 1.1; \\
-        proxy_set_header Upgrade $http_upgrade; \\
-        proxy_set_header Connection "upgrade"; \\
-        proxy_set_header Host $host; \\
-        proxy_cache_bypass $http_upgrade; \\
-    } \\
-    \\
-    location / { \\
-        proxy_pass http://localhost:3001; \\
-        proxy_http_version 1.1; \\
-        proxy_set_header Upgrade $http_upgrade; \\
-        proxy_set_header Connection "upgrade"; \\
-        proxy_set_header Host $host; \\
-        proxy_cache_bypass $http_upgrade; \\
-    } \\
-}' > /etc/nginx/sites-available/default
+COPY nginx.default.conf /etc/nginx/sites-available/default
 
 # Expose the port
 EXPOSE 80
@@ -812,6 +897,25 @@ wait -n
 # Exit with status of process that exited first
 exit $?
 EOT
+
+  # Generate dummy SSL certificates for Nginx to start before Certbot runs
+  echo "Generating dummy SSL certificates..."
+  DUMMY_CERT_DIR="$PREBUILT_DIR/dummy_certs"
+  DUMMY_LIVE_DIR="$DUMMY_CERT_DIR/live/leaklens.0x.lv"
+  DUMMY_ARCHIVE_DIR="$DUMMY_CERT_DIR/archive/leaklens.0x.lv"
+  mkdir -p "$DUMMY_LIVE_DIR"
+  mkdir -p "$DUMMY_ARCHIVE_DIR"
+
+  openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+    -keyout "$DUMMY_ARCHIVE_DIR/privkey1.pem" \
+    -out "$DUMMY_ARCHIVE_DIR/fullchain1.pem" \
+    -subj "/CN=leaklens.0x.lv" > /dev/null 2>&1
+
+  # Create symlinks similar to Certbot's structure
+  ln -s ../../archive/leaklens.0x.lv/privkey1.pem "$DUMMY_LIVE_DIR/privkey.pem"
+  ln -s ../../archive/leaklens.0x.lv/fullchain1.pem "$DUMMY_LIVE_DIR/fullchain.pem"
+  ln -s ../../archive/leaklens.0x.lv/fullchain1.pem "$DUMMY_LIVE_DIR/cert.pem" # Nginx might also look for cert.pem
+  ln -s ../../archive/leaklens.0x.lv/fullchain1.pem "$DUMMY_LIVE_DIR/chain.pem" # and chain.pem
 
   # Create a tar.gz of the prebuilt package
   echo "Creating prebuilt package archive..."
@@ -892,22 +996,28 @@ deploy_prebuilt() {
     # SSH into the server and deploy
     echo "Deploying on server..."
     ssh -i "$SSH_KEY_FILE" $SSH_OPTS "$SERVER_USER@$target" << EOF
+      set -e # Exit immediately if a command exits with a non-zero status.
+      
       # Create the deployment directory if it doesn't exist
       mkdir -p $SERVER_DIR
       
       # Extract the prebuilt package
+      echo "Extracting prebuilt package on server..."
       tar -xzf ~/leaklens-prebuilt.tar.gz -C $SERVER_DIR
       
       # Deploy using Docker
       cd $SERVER_DIR
+      echo "Building Docker image on server..."
       docker-compose build
+      echo "Starting Docker containers on server..."
       docker-compose up -d
       
       # Clean up
+      echo "Cleaning up archive on server..."
       rm ~/leaklens-prebuilt.tar.gz
 EOF
     
-    echo "✅ Prebuilt LeakLens is now running on the server!"
+    echo "✅ Prebuilt LeakLens deployment to server $target initiated."
     echo "You can access LeakLens at: http://$target:8080"
   fi
 }
