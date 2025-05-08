@@ -156,30 +156,28 @@ COPY --from=webapp-builder /app/.next /app/webapp/.next
 COPY --from=webapp-builder /app/public /app/webapp/public
 
 # Configure Nginx
-COPY <<-EOT /etc/nginx/sites-available/default
-server {
-    listen 80;
-    server_name localhost;
-    
-    location /api/ {
-        proxy_pass http://localhost:3000/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
-    
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
-}
-EOT
+RUN echo 'server { \
+    listen 80; \
+    server_name localhost; \
+    \
+    location /api/ { \
+        proxy_pass http://localhost:3000/; \
+        proxy_http_version 1.1; \
+        proxy_set_header Upgrade $http_upgrade; \
+        proxy_set_header Connection "upgrade"; \
+        proxy_set_header Host $host; \
+        proxy_cache_bypass $http_upgrade; \
+    } \
+    \
+    location / { \
+        proxy_pass http://localhost:3001; \
+        proxy_http_version 1.1; \
+        proxy_set_header Upgrade $http_upgrade; \
+        proxy_set_header Connection "upgrade"; \
+        proxy_set_header Host $host; \
+        proxy_cache_bypass $http_upgrade; \
+    } \
+}' > /etc/nginx/sites-available/default
 
 # Expose the port
 EXPOSE 80
