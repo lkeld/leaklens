@@ -37,4 +37,6 @@ Thumbs.db
 
 # Project-specific
 *.log
-*.tmp 
+*.tmp
+leaklens-prebuilt.tar.gz
+
